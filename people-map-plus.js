@@ -2,6 +2,7 @@ const LEAFLET_VERSION = "1.9.4";
 const LEAFLET_CSS_ID = "people-map-plus-leaflet-css";
 const LEAFLET_SCRIPT_ID = "people-map-plus-leaflet-js";
 const DEFAULT_TRACKS_API_ENDPOINT = "people_map_plus/tracks";
+const DEFAULT_PHOTOS_API_ENDPOINT = "people_map_plus/photos";
 
 let leafletPromise;
 
@@ -48,6 +49,7 @@ class PeopleMapPlusCard extends HTMLElement {
     this._config = undefined;
     this._hass = undefined;
     this._map = undefined;
+    this._photos = undefined;
     this._tracks = undefined;
     this._markers = undefined;
     this._mapEl = undefined;
@@ -56,6 +58,8 @@ class PeopleMapPlusCard extends HTMLElement {
     this._fitDone = false;
     this._lastTracksFetchKey = "";
     this._lastTracksFetchAt = 0;
+    this._lastPhotosFetchKey = "";
+    this._lastPhotosFetchAt = 0;
     this._resizeHandler = () => {
       this.updateMapHeight();
       this.invalidateMapSize();
@@ -83,6 +87,12 @@ class PeopleMapPlusCard extends HTMLElement {
       tracks_max_points: 500,
       tracks_min_distance_m: 0,
       tracks_refresh_seconds: 30,
+      show_photos: true,
+      photos_api_endpoint: DEFAULT_PHOTOS_API_ENDPOINT,
+      photo_days: 5,
+      photo_limit: 200,
+      photos_refresh_seconds: 60,
+      photo_marker_size: 40,
       ...config
     };
 
@@ -110,6 +120,7 @@ class PeopleMapPlusCard extends HTMLElement {
     if (this._map) {
       this._map.remove();
       this._map = undefined;
+      this._photos = undefined;
       this._tracks = undefined;
       this._markers = undefined;
       this._fitDone = false;
@@ -308,6 +319,28 @@ class PeopleMapPlusCard extends HTMLElement {
           max-width: none !important;
           max-height: none !important;
         }
+        .people-map-plus-photo-marker {
+          border: 2px solid rgba(255, 255, 255, 0.95);
+          border-radius: 50%;
+          background-size: cover;
+          background-position: center;
+          box-shadow: 0 2px 7px rgba(0, 0, 0, 0.5);
+        }
+        .people-map-plus-photo-popup {
+          max-width: 300px;
+        }
+        .people-map-plus-photo-popup img {
+          display: block;
+          width: 100%;
+          max-width: 280px;
+          height: auto;
+          border-radius: 8px;
+          margin-bottom: 6px;
+        }
+        .people-map-plus-photo-meta {
+          font-size: 0.82rem;
+          color: #555;
+        }
         @media (max-width: 800px) {
           .people-map-plus-map {
             height: 320px;
@@ -351,8 +384,9 @@ class PeopleMapPlusCard extends HTMLElement {
         attribution: "&copy; OpenStreetMap contributors"
       }).addTo(this._map);
 
-      this._markers = L.layerGroup().addTo(this._map);
+      this._photos = L.layerGroup().addTo(this._map);
       this._tracks = L.layerGroup().addTo(this._map);
+      this._markers = L.layerGroup().addTo(this._map);
       this.updateMapHeight();
       this.invalidateMapSize();
       this.setStatus("Map ready");
@@ -409,6 +443,7 @@ class PeopleMapPlusCard extends HTMLElement {
     }
 
     this.refreshTracks(persons);
+    this.refreshPhotos();
 
     if (points.length === 0) {
       this.setStatus("No person coordinates found.");
@@ -478,6 +513,97 @@ class PeopleMapPlusCard extends HTMLElement {
       this.renderTracks(tracks, persons);
     } catch (error) {
       console.warn("[people-map-plus] Tracks fetch failed", error);
+    }
+  }
+
+  async refreshPhotos() {
+    if (!this._map || !this._photos || !this._config) {
+      return;
+    }
+
+    if (!this._config.show_photos) {
+      this._photos.clearLayers();
+      return;
+    }
+
+    const endpoint = String(this._config.photos_api_endpoint || DEFAULT_PHOTOS_API_ENDPOINT).trim().replace(/^\/+/, "");
+    if (!endpoint || !this._hass || typeof this._hass.callApi !== "function") {
+      return;
+    }
+
+    const days = clampInt(this._config.photo_days, 1, 30, 5);
+    const limit = clampInt(this._config.photo_limit, 1, 5000, 200);
+    const refreshSeconds = clampInt(this._config.photos_refresh_seconds, 5, 600, 60);
+    const fetchKey = `${endpoint}|${days}|${limit}`;
+    const now = Date.now();
+    if (fetchKey === this._lastPhotosFetchKey && now - this._lastPhotosFetchAt < refreshSeconds * 1000) {
+      return;
+    }
+    this._lastPhotosFetchKey = fetchKey;
+    this._lastPhotosFetchAt = now;
+
+    try {
+      const query = new URLSearchParams({
+        days: String(days),
+        limit: String(limit),
+        withGps: "true"
+      });
+      const parsed = await this._hass.callApi("GET", `${endpoint}?${query.toString()}`);
+      if (!parsed || parsed.success === false) {
+        return;
+      }
+
+      const items = Array.isArray(parsed?.items) ? parsed.items : [];
+      this.renderPhotos(items);
+    } catch (error) {
+      console.warn("[people-map-plus] Photos fetch failed", error);
+    }
+  }
+
+  renderPhotos(items) {
+    if (!this._photos || !window.L || !Array.isArray(items)) {
+      return;
+    }
+
+    this._photos.clearLayers();
+    const markerSize = clampInt(this._config?.photo_marker_size, 24, 96, 40);
+    const iconSize = [markerSize, markerSize];
+    const iconAnchor = [Math.round(markerSize / 2), Math.round(markerSize / 2)];
+
+    for (const item of items) {
+      const lat = toNumber(item?.lat);
+      const lon = toNumber(item?.lon);
+      if (lat === null || lon === null) {
+        continue;
+      }
+
+      const previewUrl = normalizeMediaUrl(item?.previewUrl || item?.thumbUrl || item?.mediaUrl);
+      const mediaUrl = normalizeMediaUrl(item?.mediaUrl || previewUrl);
+      if (!previewUrl || !mediaUrl) {
+        continue;
+      }
+
+      const markerHtml = `<div class="people-map-plus-photo-marker" style="width:${markerSize}px;height:${markerSize}px;background-image:url('${escapeHtmlAttr(previewUrl)}');"></div>`;
+      const icon = window.L.divIcon({
+        className: "",
+        html: markerHtml,
+        iconSize,
+        iconAnchor
+      });
+
+      const capturedAtText = formatCapturedAt(item?.capturedAtUtc);
+      const popupHtml = `
+        <div class="people-map-plus-photo-popup">
+          <a href="${escapeHtmlAttr(mediaUrl)}" target="_blank" rel="noopener noreferrer">
+            <img src="${escapeHtmlAttr(mediaUrl)}" alt="photo"/>
+          </a>
+          <div class="people-map-plus-photo-meta">${escapeHtml(capturedAtText)}</div>
+        </div>
+      `;
+
+      window.L.marker([lat, lon], { icon })
+        .bindPopup(popupHtml, { maxWidth: 320 })
+        .addTo(this._photos);
     }
   }
 
@@ -646,7 +772,10 @@ class PeopleMapPlusCard extends HTMLElement {
       panel_mode: true,
       show_tracks: true,
       tracks_api_endpoint: DEFAULT_TRACKS_API_ENDPOINT,
-      track_days: 1
+      track_days: 1,
+      show_photos: true,
+      photos_api_endpoint: DEFAULT_PHOTOS_API_ENDPOINT,
+      photo_days: 5
     };
   }
 }
@@ -856,6 +985,57 @@ function clampNumber(value, min, max, fallback) {
   }
 
   return parsed;
+}
+
+function normalizeMediaUrl(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (trimmed.startsWith("/")) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("https://") || trimmed.startsWith("http://")) {
+    return trimmed;
+  }
+
+  return "";
+}
+
+function formatCapturedAt(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return "Photo";
+  }
+
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "Photo";
+  }
+
+  return new Date(timestamp).toLocaleString();
+}
+
+function escapeHtml(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function escapeHtmlAttr(value) {
+  return escapeHtml(value).replaceAll("`", "&#96;");
 }
 
 if (!customElements.get("people-map-plus")) {

@@ -12,6 +12,7 @@ Card type: `custom:people-map-plus`
 4. Panel-friendly height mode for full-width/full-height map.
 5. Coordinate fallback for `person.*`: direct `latitude/longitude`, then `source` tracker, then matching `zone.*`.
 6. `persons` list is normalized (`max` -> `person.max` if such entity exists); if explicit list is invalid/empty, card falls back to auto-detected `person.*`.
+7. Photo layer from integration API with circular thumbnail markers and popup to open full-size photo.
 
 ## Files
 
@@ -39,6 +40,8 @@ panel_top_offset_px: 112
 min_height: 500
 show_tracks: true
 track_days: 3
+show_photos: true
+photo_days: 5
 ```
 
 ## Config
@@ -79,8 +82,18 @@ Tracks options:
 6. `tracks_min_distance_m` (number, default `0`) - distance dedupe on backend request.
 7. `tracks_refresh_seconds` (number, default `30`) - fetch throttle window.
 
+Photos options:
+
+1. `show_photos` (bool, default `true`) - render photo markers layer.
+2. `photos_api_endpoint` (string, default `people_map_plus/photos`) - Home Assistant API endpoint path used via `hass.callApi`.
+3. `photo_days` (number, `1..30`, default `5`) - how many days back to request photos.
+4. `photo_limit` (number, `1..5000`, default `200`) - max photos returned by API.
+5. `photos_refresh_seconds` (number, default `60`) - fetch throttle window for photos.
+6. `photo_marker_size` (number, `24..96`, default `40`) - thumbnail marker size in px.
+
 ## Notes
 
 1. Leaflet is loaded from CDN (`unpkg.com`) at runtime.
 2. Tracks layer uses integration API endpoint `/api/people_map_plus/tracks` (called as `people_map_plus/tracks` from `hass.callApi`).
-3. This is a minimal starter card for further integration with People Map Plus backend API.
+3. Photos layer uses integration API endpoint `/api/people_map_plus/photos` (called as `people_map_plus/photos` from `hass.callApi`).
+4. This is a minimal starter card for further integration with People Map Plus backend API.
