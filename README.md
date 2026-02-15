@@ -10,6 +10,7 @@ Card type: `custom:people-map-plus`
 2. Markers for configured `person.*` entities.
 3. If `persons` is empty, auto-picks up to 5 `person.*` entities.
 4. Panel-friendly height mode for full-width/full-height map.
+5. Coordinate fallback for `person.*`: direct `latitude/longitude`, then `source` tracker, then matching `zone.*`.
 
 ## Files
 

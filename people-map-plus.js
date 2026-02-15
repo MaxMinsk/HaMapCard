@@ -366,8 +366,9 @@ class PeopleMapPlusCard extends HTMLElement {
         continue;
       }
 
-      const lat = toNumber(state.attributes.latitude);
-      const lon = toNumber(state.attributes.longitude);
+      const coords = resolveEntityCoordinates(this._hass, state);
+      const lat = coords?.lat ?? null;
+      const lon = coords?.lon ?? null;
       if (lat === null || lon === null) {
         continue;
       }
@@ -502,6 +503,100 @@ function toNumber(value) {
   }
 
   return null;
+}
+
+function resolveEntityCoordinates(hass, state) {
+  const direct = readCoordsFromAttributes(state?.attributes);
+  if (direct) {
+    return direct;
+  }
+
+  if (!state || !state.entity_id || !state.entity_id.startsWith("person.")) {
+    return null;
+  }
+
+  const sourceEntityId =
+    (typeof state.attributes?.source === "string" && state.attributes.source) ||
+    (typeof state.attributes?.entity_id === "string" && state.attributes.entity_id);
+
+  if (sourceEntityId && hass.states[sourceEntityId]) {
+    const fromSource = readCoordsFromAttributes(hass.states[sourceEntityId].attributes);
+    if (fromSource) {
+      return fromSource;
+    }
+  }
+
+  const fromZone = resolveZoneCoordinates(hass, state);
+  if (fromZone) {
+    return fromZone;
+  }
+
+  return null;
+}
+
+function readCoordsFromAttributes(attributes) {
+  if (!attributes) {
+    return null;
+  }
+
+  const lat = toNumber(attributes.latitude);
+  const lon = toNumber(attributes.longitude);
+  if (lat === null || lon === null) {
+    return null;
+  }
+
+  return { lat, lon };
+}
+
+function resolveZoneCoordinates(hass, state) {
+  const zoneHints = [];
+  if (typeof state.state === "string" && state.state) {
+    zoneHints.push(state.state);
+  }
+  if (typeof state.attributes?.zone === "string" && state.attributes.zone) {
+    zoneHints.push(state.attributes.zone);
+  }
+
+  for (const hint of zoneHints) {
+    const normalized = normalizeZoneName(hint);
+    if (!normalized) {
+      continue;
+    }
+
+    const zones = Object.values(hass.states).filter((entity) => entity.entity_id.startsWith("zone."));
+    for (const zoneEntity of zones) {
+      const zoneId = zoneEntity.entity_id.startsWith("zone.") ? zoneEntity.entity_id.slice(5) : zoneEntity.entity_id;
+      const candidates = [
+        zoneId,
+        typeof zoneEntity.attributes?.friendly_name === "string" ? zoneEntity.attributes.friendly_name : "",
+        typeof zoneEntity.attributes?.name === "string" ? zoneEntity.attributes.name : ""
+      ];
+      const match = candidates.some((name) => normalizeZoneName(name) === normalized);
+      if (!match) {
+        continue;
+      }
+
+      const coords = readCoordsFromAttributes(zoneEntity.attributes);
+      if (coords) {
+        return coords;
+      }
+    }
+  }
+
+  return null;
+}
+
+function normalizeZoneName(value) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/^zone\./, "");
+  return normalized
+    .replace(/\s+/g, "_")
+    .replace(/-+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/[^a-z0-9_\u0400-\u04ff]/g, "");
 }
 
 function clampInt(value, min, max, fallback) {
