@@ -1,8 +1,7 @@
 const LEAFLET_VERSION = "1.9.4";
 const LEAFLET_CSS_ID = "people-map-plus-leaflet-css";
 const LEAFLET_SCRIPT_ID = "people-map-plus-leaflet-js";
-const DEFAULT_TRACKS_API_URL = "/api/hassio_ingress/cb4e65a6_people_map_plus/api/people_map_plus/tracks";
-const DEFAULT_ADDON_SLUG = "cb4e65a6_people_map_plus";
+const DEFAULT_TRACKS_API_ENDPOINT = "people_map_plus/tracks";
 
 let leafletPromise;
 
@@ -57,9 +56,6 @@ class PeopleMapPlusCard extends HTMLElement {
     this._fitDone = false;
     this._lastTracksFetchKey = "";
     this._lastTracksFetchAt = 0;
-    this._tracksAbortController = null;
-    this._resolvedIngressBase = "";
-    this._ingressResolvedAt = 0;
     this._resizeHandler = () => {
       this.updateMapHeight();
       this.invalidateMapSize();
@@ -82,8 +78,7 @@ class PeopleMapPlusCard extends HTMLElement {
       height: 420,
       show_status: false,
       show_tracks: true,
-      tracks_api_url: DEFAULT_TRACKS_API_URL,
-      addon_slug: DEFAULT_ADDON_SLUG,
+      tracks_api_endpoint: DEFAULT_TRACKS_API_ENDPOINT,
       track_days: 1,
       tracks_max_points: 500,
       tracks_min_distance_m: 0,
@@ -119,12 +114,6 @@ class PeopleMapPlusCard extends HTMLElement {
       this._markers = undefined;
       this._fitDone = false;
     }
-    if (this._tracksAbortController) {
-      this._tracksAbortController.abort();
-      this._tracksAbortController = null;
-    }
-    this._resolvedIngressBase = "";
-    this._ingressResolvedAt = 0;
   }
 
   getCardSize() {
@@ -462,25 +451,18 @@ class PeopleMapPlusCard extends HTMLElement {
     const maxPoints = clampInt(this._config.tracks_max_points, 50, 5000, 500);
     const minDistance = clampInt(this._config.tracks_min_distance_m, 0, 2000, 0);
     const refreshSeconds = clampInt(this._config.tracks_refresh_seconds, 5, 300, 30);
-    const addonSlug = String(this._config.addon_slug || DEFAULT_ADDON_SLUG).trim();
-    await this.ensureIngressResolved(addonSlug);
-    const candidateBaseUrls = this.buildTrackApiCandidates(addonSlug);
-    if (candidateBaseUrls.length === 0) {
+    const endpoint = String(this._config.tracks_api_endpoint || DEFAULT_TRACKS_API_ENDPOINT).trim().replace(/^\/+/, "");
+    if (!endpoint || !this._hass || typeof this._hass.callApi !== "function") {
       return;
     }
 
     const now = Date.now();
-    const fetchKey = `${candidateBaseUrls.join("|")}|${entities.join(",")}|${days}|${maxPoints}|${minDistance}`;
+    const fetchKey = `${endpoint}|${entities.join(",")}|${days}|${maxPoints}|${minDistance}`;
     if (fetchKey === this._lastTracksFetchKey && now - this._lastTracksFetchAt < refreshSeconds * 1000) {
       return;
     }
     this._lastTracksFetchKey = fetchKey;
     this._lastTracksFetchAt = now;
-
-    if (this._tracksAbortController) {
-      this._tracksAbortController.abort();
-    }
-    this._tracksAbortController = new AbortController();
 
     try {
       const query = new URLSearchParams({
@@ -489,39 +471,15 @@ class PeopleMapPlusCard extends HTMLElement {
         maxPoints: String(maxPoints),
         minDistanceMeters: String(minDistance)
       });
-      let parsed = null;
-      for (const baseUrl of candidateBaseUrls) {
-        const requestUrl = baseUrl.includes("?")
-          ? `${baseUrl}&${query.toString()}`
-          : `${baseUrl}?${query.toString()}`;
-        const response = await fetch(requestUrl, {
-          method: "GET",
-          credentials: "include",
-          signal: this._tracksAbortController.signal
-        });
-        if (!response.ok) {
-          continue;
-        }
 
-        const contentType = String(response.headers.get("content-type") || "").toLowerCase();
-        if (!contentType.includes("application/json")) {
-          continue;
-        }
-
-        parsed = await response.json();
-        break;
-      }
-
-      if (!parsed) {
+      const parsed = await this._hass.callApi("GET", `${endpoint}?${query.toString()}`);
+      if (!parsed || parsed.success === false) {
         return;
       }
 
       const tracks = Array.isArray(parsed?.tracks) ? parsed.tracks : [];
       this.renderTracks(tracks, persons);
     } catch (error) {
-      if (error && error.name === "AbortError") {
-        return;
-      }
       console.warn("[people-map-plus] Tracks fetch failed", error);
     }
   }
@@ -592,63 +550,6 @@ class PeopleMapPlusCard extends HTMLElement {
     return persons
       .map((person) => person.entity)
       .filter(Boolean);
-  }
-
-  buildTrackApiCandidates(addonSlug) {
-    const candidates = [];
-    const configured = String(this._config?.tracks_api_url || "").trim();
-    if (configured) {
-      candidates.push(configured);
-      const appMatch = configured.match(/^\/app\/([^/]+)\/api\/people_map_plus\/tracks/i);
-      if (appMatch && appMatch[1]) {
-        candidates.push(`/api/hassio_ingress/${appMatch[1]}/api/people_map_plus/tracks`);
-      }
-    }
-
-    if (this._resolvedIngressBase) {
-      candidates.push(`${this._resolvedIngressBase}/api/people_map_plus/tracks`);
-    }
-
-    if (addonSlug) {
-      candidates.push(`/api/hassio_ingress/${addonSlug}/api/people_map_plus/tracks`);
-      candidates.push(`/app/${addonSlug}/api/people_map_plus/tracks`);
-    }
-
-    candidates.push(DEFAULT_TRACKS_API_URL);
-    return Array.from(new Set(candidates));
-  }
-
-  async ensureIngressResolved(addonSlug) {
-    const now = Date.now();
-    if (this._resolvedIngressBase && now - this._ingressResolvedAt < 5 * 60 * 1000) {
-      return;
-    }
-
-    if (!addonSlug) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/hassio_ingress/${encodeURIComponent(addonSlug)}/`, {
-        method: "GET",
-        credentials: "include",
-        redirect: "follow"
-      });
-      if (!response.ok) {
-        return;
-      }
-
-      const resolvedUrl = response.url || "";
-      const match = resolvedUrl.match(/\/api\/hassio_ingress\/([^/]+)(?:\/|$)/i);
-      if (match && match[1]) {
-        this._resolvedIngressBase = `/api/hassio_ingress/${match[1]}`;
-      } else {
-        this._resolvedIngressBase = `/api/hassio_ingress/${addonSlug}`;
-      }
-      this._ingressResolvedAt = now;
-    } catch (error) {
-      console.warn("[people-map-plus] Unable to resolve ingress session base", error);
-    }
   }
 
   resolvePersons() {
@@ -733,8 +634,7 @@ class PeopleMapPlusCard extends HTMLElement {
       persons: [],
       panel_mode: true,
       show_tracks: true,
-      tracks_api_url: DEFAULT_TRACKS_API_URL,
-      addon_slug: DEFAULT_ADDON_SLUG,
+      tracks_api_endpoint: DEFAULT_TRACKS_API_ENDPOINT,
       track_days: 1
     };
   }
