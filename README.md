@@ -37,6 +37,8 @@ fit_entities: true
 panel_mode: true
 panel_top_offset_px: 112
 min_height: 500
+show_tracks: true
+track_days: 3
 ```
 
 ## Config
@@ -67,7 +69,19 @@ Additional layout options:
 4. `height` (number, default `420`) - fixed height when `panel_mode: false`.
 5. `show_status` (bool, default `false`) - show/hide status text under map.
 
+Tracks options:
+
+1. `show_tracks` (bool, default `true`) - render movement lines.
+2. `tracks_api_url` (string) - backend tracks endpoint URL.
+   - default: `/api/hassio_ingress/cb4e65a6_people_map_plus/api/people_map_plus/tracks`
+3. `track_days` (number, `1..30`, default `1`) - how many days back to load.
+4. `track_entities` (array, optional) - explicit entities for tracks.
+5. `tracks_max_points` (number, default `500`) - max points per entity.
+6. `tracks_min_distance_m` (number, default `0`) - distance dedupe on backend request.
+7. `tracks_refresh_seconds` (number, default `30`) - fetch throttle window.
+
 ## Notes
 
 1. Leaflet is loaded from CDN (`unpkg.com`) at runtime.
-2. This is a minimal starter card for further integration with People Map Plus backend API.
+2. Tracks layer requires add-on version `0.1.15+` (`/api/people_map_plus/tracks` endpoint).
+3. This is a minimal starter card for further integration with People Map Plus backend API.

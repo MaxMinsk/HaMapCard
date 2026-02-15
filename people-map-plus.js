@@ -1,6 +1,7 @@
 const LEAFLET_VERSION = "1.9.4";
 const LEAFLET_CSS_ID = "people-map-plus-leaflet-css";
 const LEAFLET_SCRIPT_ID = "people-map-plus-leaflet-js";
+const DEFAULT_TRACKS_API_URL = "/api/hassio_ingress/cb4e65a6_people_map_plus/api/people_map_plus/tracks";
 
 let leafletPromise;
 
@@ -47,11 +48,15 @@ class PeopleMapPlusCard extends HTMLElement {
     this._config = undefined;
     this._hass = undefined;
     this._map = undefined;
+    this._tracks = undefined;
     this._markers = undefined;
     this._mapEl = undefined;
     this._statusEl = undefined;
     this._initialized = false;
     this._fitDone = false;
+    this._lastTracksFetchKey = "";
+    this._lastTracksFetchAt = 0;
+    this._tracksAbortController = null;
     this._resizeHandler = () => {
       this.updateMapHeight();
       this.invalidateMapSize();
@@ -73,6 +78,12 @@ class PeopleMapPlusCard extends HTMLElement {
       min_height: 360,
       height: 420,
       show_status: false,
+      show_tracks: true,
+      tracks_api_url: DEFAULT_TRACKS_API_URL,
+      track_days: 1,
+      tracks_max_points: 500,
+      tracks_min_distance_m: 0,
+      tracks_refresh_seconds: 30,
       ...config
     };
 
@@ -100,8 +111,13 @@ class PeopleMapPlusCard extends HTMLElement {
     if (this._map) {
       this._map.remove();
       this._map = undefined;
+      this._tracks = undefined;
       this._markers = undefined;
       this._fitDone = false;
+    }
+    if (this._tracksAbortController) {
+      this._tracksAbortController.abort();
+      this._tracksAbortController = null;
     }
   }
 
@@ -341,6 +357,7 @@ class PeopleMapPlusCard extends HTMLElement {
       }).addTo(this._map);
 
       this._markers = L.layerGroup().addTo(this._map);
+      this._tracks = L.layerGroup().addTo(this._map);
       this.updateMapHeight();
       this.invalidateMapSize();
       this.setStatus("Map ready");
@@ -356,6 +373,9 @@ class PeopleMapPlusCard extends HTMLElement {
       return;
     }
 
+    if (this._tracks) {
+      this._tracks.clearLayers();
+    }
     this._markers.clearLayers();
     const persons = this.resolvePersons();
     const points = [];
@@ -396,6 +416,8 @@ class PeopleMapPlusCard extends HTMLElement {
         .addTo(this._markers);
     }
 
+    this.refreshTracks(persons);
+
     if (points.length === 0) {
       this.setStatus("No person coordinates found.");
       this.invalidateMapSize();
@@ -412,6 +434,143 @@ class PeopleMapPlusCard extends HTMLElement {
       });
       this._fitDone = true;
     }
+  }
+
+  async refreshTracks(persons) {
+    if (!this._map || !this._tracks || !this._config) {
+      return;
+    }
+
+    if (!this._config.show_tracks) {
+      this._tracks.clearLayers();
+      return;
+    }
+
+    const entities = this.resolveTrackEntities(persons);
+    if (entities.length === 0) {
+      this._tracks.clearLayers();
+      return;
+    }
+
+    const days = clampInt(this._config.track_days, 1, 30, 1);
+    const maxPoints = clampInt(this._config.tracks_max_points, 50, 5000, 500);
+    const minDistance = clampInt(this._config.tracks_min_distance_m, 0, 2000, 0);
+    const refreshSeconds = clampInt(this._config.tracks_refresh_seconds, 5, 300, 30);
+    const baseUrl = String(this._config.tracks_api_url || DEFAULT_TRACKS_API_URL).trim();
+    if (!baseUrl) {
+      return;
+    }
+
+    const now = Date.now();
+    const fetchKey = `${baseUrl}|${entities.join(",")}|${days}|${maxPoints}|${minDistance}`;
+    if (fetchKey === this._lastTracksFetchKey && now - this._lastTracksFetchAt < refreshSeconds * 1000) {
+      return;
+    }
+    this._lastTracksFetchKey = fetchKey;
+    this._lastTracksFetchAt = now;
+
+    if (this._tracksAbortController) {
+      this._tracksAbortController.abort();
+    }
+    this._tracksAbortController = new AbortController();
+
+    try {
+      const query = new URLSearchParams({
+        entities: entities.join(","),
+        days: String(days),
+        maxPoints: String(maxPoints),
+        minDistanceMeters: String(minDistance)
+      });
+      const requestUrl = baseUrl.includes("?")
+        ? `${baseUrl}&${query.toString()}`
+        : `${baseUrl}?${query.toString()}`;
+
+      const response = await fetch(requestUrl, {
+        method: "GET",
+        credentials: "include",
+        signal: this._tracksAbortController.signal
+      });
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = await response.json();
+      const tracks = Array.isArray(payload?.tracks) ? payload.tracks : [];
+      this.renderTracks(tracks, persons);
+    } catch (error) {
+      if (error && error.name === "AbortError") {
+        return;
+      }
+      console.warn("[people-map-plus] Tracks fetch failed", error);
+    }
+  }
+
+  renderTracks(tracks, persons) {
+    if (!this._tracks || !window.L) {
+      return;
+    }
+
+    this._tracks.clearLayers();
+    const colorByEntity = new Map();
+    for (const person of persons) {
+      colorByEntity.set(person.entity, person.color || "#00b0ff");
+    }
+
+    for (const track of tracks) {
+      const entityId = typeof track?.entityId === "string" ? track.entityId : "";
+      const points = Array.isArray(track?.points) ? track.points : [];
+      const latLngs = points
+        .map((point) => {
+          const lat = toNumber(point?.lat);
+          const lon = toNumber(point?.lon);
+          return lat === null || lon === null ? null : [lat, lon];
+        })
+        .filter(Boolean);
+
+      if (latLngs.length < 2) {
+        continue;
+      }
+
+      const color = colorByEntity.get(entityId) || "#00b0ff";
+      window.L.polyline(latLngs, {
+        color,
+        weight: 3,
+        opacity: 0.85
+      }).addTo(this._tracks);
+
+      const start = latLngs[0];
+      const end = latLngs[latLngs.length - 1];
+      window.L.circleMarker(start, {
+        radius: 4,
+        color,
+        weight: 1,
+        fillColor: color,
+        fillOpacity: 0.7
+      }).bindTooltip(`${entityId} start`).addTo(this._tracks);
+      window.L.circleMarker(end, {
+        radius: 4,
+        color,
+        weight: 1,
+        fillColor: color,
+        fillOpacity: 1
+      }).bindTooltip(`${entityId} end`).addTo(this._tracks);
+    }
+  }
+
+  resolveTrackEntities(persons) {
+    const explicit = Array.isArray(this._config?.track_entities) ? this._config.track_entities : [];
+    if (explicit.length > 0 && this._hass) {
+      const normalized = explicit
+        .map((entity) => normalizePersonEntityId(this._hass, entity))
+        .filter(Boolean);
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    }
+
+    return persons
+      .map((person) => person.entity)
+      .filter(Boolean);
   }
 
   resolvePersons() {
@@ -494,7 +653,10 @@ class PeopleMapPlusCard extends HTMLElement {
       default_zoom: 12,
       fit_entities: true,
       persons: [],
-      panel_mode: true
+      panel_mode: true,
+      show_tracks: true,
+      tracks_api_url: DEFAULT_TRACKS_API_URL,
+      track_days: 1
     };
   }
 }
