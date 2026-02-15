@@ -60,6 +60,7 @@ class PeopleMapPlusCard extends HTMLElement {
     this._lastTracksFetchAt = 0;
     this._lastPhotosFetchKey = "";
     this._lastPhotosFetchAt = 0;
+    this._photoItemsCache = [];
     this._resizeHandler = () => {
       this.updateMapHeight();
       this.invalidateMapSize();
@@ -124,6 +125,7 @@ class PeopleMapPlusCard extends HTMLElement {
       this._tracks = undefined;
       this._markers = undefined;
       this._fitDone = false;
+      this._photoItemsCache = [];
     }
   }
 
@@ -387,6 +389,11 @@ class PeopleMapPlusCard extends HTMLElement {
       this._photos = L.layerGroup().addTo(this._map);
       this._tracks = L.layerGroup().addTo(this._map);
       this._markers = L.layerGroup().addTo(this._map);
+      this._map.on("zoomend moveend", () => {
+        if (this._config?.show_photos && this._photoItemsCache.length > 0) {
+          this.renderPhotos(this._photoItemsCache);
+        }
+      });
       this.updateMapHeight();
       this.invalidateMapSize();
       this.setStatus("Map ready");
@@ -523,6 +530,7 @@ class PeopleMapPlusCard extends HTMLElement {
 
     if (!this._config.show_photos) {
       this._photos.clearLayers();
+      this._photoItemsCache = [];
       return;
     }
 
@@ -532,7 +540,7 @@ class PeopleMapPlusCard extends HTMLElement {
     }
 
     const days = clampInt(this._config.photo_days, 1, 30, 5);
-    const limit = clampInt(this._config.photo_limit, 1, 5000, 200);
+    const limit = parsePhotoLimit(this._config.photo_limit, 200);
     const refreshSeconds = clampInt(this._config.photos_refresh_seconds, 5, 600, 60);
     const fetchKey = `${endpoint}|${days}|${limit}`;
     const now = Date.now();
@@ -545,15 +553,16 @@ class PeopleMapPlusCard extends HTMLElement {
     try {
       const query = new URLSearchParams({
         days: String(days),
-        limit: String(limit),
         withGps: "true"
       });
+      query.set("limit", String(limit));
       const parsed = await this._hass.callApi("GET", `${endpoint}?${query.toString()}`);
       if (!parsed || parsed.success === false) {
         return;
       }
 
       const items = Array.isArray(parsed?.items) ? parsed.items : [];
+      this._photoItemsCache = items;
       this.renderPhotos(items);
     } catch (error) {
       console.warn("[people-map-plus] Photos fetch failed", error);
@@ -561,15 +570,14 @@ class PeopleMapPlusCard extends HTMLElement {
   }
 
   renderPhotos(items) {
-    if (!this._photos || !window.L || !Array.isArray(items)) {
+    if (!this._photos || !this._map || !window.L || !Array.isArray(items)) {
       return;
     }
 
     this._photos.clearLayers();
     const markerSize = clampInt(this._config?.photo_marker_size, 24, 96, 40);
-    const iconSize = [markerSize, markerSize];
-    const iconAnchor = [Math.round(markerSize / 2), Math.round(markerSize / 2)];
-
+    const markerRadiusPx = markerSize / 2;
+    const candidates = [];
     for (const item of items) {
       const lat = toNumber(item?.lat);
       const lon = toNumber(item?.lon);
@@ -583,7 +591,21 @@ class PeopleMapPlusCard extends HTMLElement {
         continue;
       }
 
-      const markerHtml = `<div class="people-map-plus-photo-marker" style="width:${markerSize}px;height:${markerSize}px;background-image:url('${escapeHtmlAttr(previewUrl)}');"></div>`;
+      candidates.push({
+        lat,
+        lon,
+        previewUrl,
+        mediaUrl,
+        capturedMs: parseIsoTimestampToMs(item?.capturedAtUtc) ?? 0,
+        capturedText: formatCapturedAt(item?.capturedAtUtc)
+      });
+    }
+
+    const selected = selectVisiblePhotosByOverlap(this._map, candidates, markerRadiusPx);
+    const iconSize = [markerSize, markerSize];
+    const iconAnchor = [Math.round(markerSize / 2), Math.round(markerSize / 2)];
+    for (const item of selected) {
+      const markerHtml = `<div class="people-map-plus-photo-marker" style="width:${markerSize}px;height:${markerSize}px;background-image:url('${escapeHtmlAttr(item.previewUrl)}');"></div>`;
       const icon = window.L.divIcon({
         className: "",
         html: markerHtml,
@@ -591,17 +613,16 @@ class PeopleMapPlusCard extends HTMLElement {
         iconAnchor
       });
 
-      const capturedAtText = formatCapturedAt(item?.capturedAtUtc);
       const popupHtml = `
         <div class="people-map-plus-photo-popup">
-          <a href="${escapeHtmlAttr(mediaUrl)}" target="_blank" rel="noopener noreferrer">
-            <img src="${escapeHtmlAttr(mediaUrl)}" alt="photo"/>
+          <a href="${escapeHtmlAttr(item.mediaUrl)}" target="_blank" rel="noopener noreferrer">
+            <img src="${escapeHtmlAttr(item.mediaUrl)}" alt="photo"/>
           </a>
-          <div class="people-map-plus-photo-meta">${escapeHtml(capturedAtText)}</div>
+          <div class="people-map-plus-photo-meta">${escapeHtml(item.capturedText)}</div>
         </div>
       `;
 
-      window.L.marker([lat, lon], { icon })
+      window.L.marker([item.lat, item.lon], { icon })
         .bindPopup(popupHtml, { maxWidth: 320 })
         .addTo(this._photos);
     }
@@ -1006,6 +1027,45 @@ function normalizeMediaUrl(value) {
   }
 
   return "";
+}
+
+function parsePhotoLimit(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  const rounded = Math.round(parsed);
+  if (rounded <= 0) {
+    return 0;
+  }
+
+  return Math.min(rounded, 200000);
+}
+
+function selectVisiblePhotosByOverlap(map, candidates, markerRadiusPx) {
+  const selected = [];
+  const sorted = [...candidates].sort((a, b) => b.capturedMs - a.capturedMs);
+  for (const candidate of sorted) {
+    const point = map.latLngToLayerPoint([candidate.lat, candidate.lon]);
+    const overlaps = selected.some((existing) => {
+      const dx = point.x - existing.point.x;
+      const dy = point.y - existing.point.y;
+      const distance = Math.sqrt((dx * dx) + (dy * dy));
+      return distance <= (markerRadiusPx + existing.radiusPx);
+    });
+    if (overlaps) {
+      continue;
+    }
+
+    selected.push({
+      ...candidate,
+      point,
+      radiusPx: markerRadiusPx
+    });
+  }
+
+  return selected;
 }
 
 function formatCapturedAt(value) {

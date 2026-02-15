@@ -13,6 +13,7 @@ Card type: `custom:people-map-plus`
 5. Coordinate fallback for `person.*`: direct `latitude/longitude`, then `source` tracker, then matching `zone.*`.
 6. `persons` list is normalized (`max` -> `person.max` if such entity exists); if explicit list is invalid/empty, card falls back to auto-detected `person.*`.
 7. Photo layer from integration API with circular thumbnail markers and popup to open full-size photo.
+8. If photo circles overlap, only the newest photo is shown.
 
 ## Files
 
@@ -87,7 +88,7 @@ Photos options:
 1. `show_photos` (bool, default `true`) - render photo markers layer.
 2. `photos_api_endpoint` (string, default `people_map_plus/photos`) - Home Assistant API endpoint path used via `hass.callApi`.
 3. `photo_days` (number, `1..30`, default `5`) - how many days back to request photos.
-4. `photo_limit` (number, `1..5000`, default `200`) - max photos returned by API.
+4. `photo_limit` (number, default `200`) - max photos returned by API, `0` means unlimited.
 5. `photos_refresh_seconds` (number, default `60`) - fetch throttle window for photos.
 6. `photo_marker_size` (number, `24..96`, default `40`) - thumbnail marker size in px.
 
