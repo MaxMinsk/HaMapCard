@@ -141,8 +141,108 @@ class PeopleMapPlusCard extends HTMLElement {
           background: var(--ha-card-background, var(--card-background-color));
         }
         .people-map-plus-map .leaflet-container {
+          position: relative;
+          overflow: hidden;
           width: 100%;
           height: 100%;
+          background: #ddd;
+          outline: 0;
+        }
+        .people-map-plus-map .leaflet-pane,
+        .people-map-plus-map .leaflet-tile,
+        .people-map-plus-map .leaflet-marker-icon,
+        .people-map-plus-map .leaflet-marker-shadow,
+        .people-map-plus-map .leaflet-tile-container,
+        .people-map-plus-map .leaflet-pane > svg,
+        .people-map-plus-map .leaflet-pane > canvas {
+          position: absolute;
+          left: 0;
+          top: 0;
+        }
+        .people-map-plus-map .leaflet-pane {
+          z-index: 400;
+        }
+        .people-map-plus-map .leaflet-tile-pane {
+          z-index: 200;
+        }
+        .people-map-plus-map .leaflet-overlay-pane {
+          z-index: 400;
+        }
+        .people-map-plus-map .leaflet-shadow-pane {
+          z-index: 500;
+        }
+        .people-map-plus-map .leaflet-marker-pane {
+          z-index: 600;
+        }
+        .people-map-plus-map .leaflet-tooltip-pane {
+          z-index: 650;
+        }
+        .people-map-plus-map .leaflet-popup-pane {
+          z-index: 700;
+        }
+        .people-map-plus-map .leaflet-map-pane canvas {
+          z-index: 100;
+        }
+        .people-map-plus-map .leaflet-map-pane svg {
+          z-index: 200;
+        }
+        .people-map-plus-map .leaflet-tile {
+          visibility: hidden;
+        }
+        .people-map-plus-map .leaflet-tile-loaded {
+          visibility: inherit;
+        }
+        .people-map-plus-map .leaflet-zoom-box {
+          width: 0;
+          height: 0;
+          box-sizing: border-box;
+          z-index: 800;
+        }
+        .people-map-plus-map .leaflet-control {
+          position: relative;
+          z-index: 800;
+          pointer-events: auto;
+        }
+        .people-map-plus-map .leaflet-top,
+        .people-map-plus-map .leaflet-bottom {
+          position: absolute;
+          z-index: 1000;
+          pointer-events: none;
+        }
+        .people-map-plus-map .leaflet-top {
+          top: 10px;
+        }
+        .people-map-plus-map .leaflet-right {
+          right: 10px;
+        }
+        .people-map-plus-map .leaflet-bottom {
+          bottom: 10px;
+        }
+        .people-map-plus-map .leaflet-left {
+          left: 10px;
+        }
+        .people-map-plus-map .leaflet-control-zoom {
+          border: 2px solid rgba(0, 0, 0, 0.2);
+          border-radius: 4px;
+        }
+        .people-map-plus-map .leaflet-control-zoom a {
+          width: 26px;
+          height: 26px;
+          line-height: 26px;
+          display: block;
+          text-align: center;
+          text-decoration: none;
+          background: #fff;
+          color: #000;
+          font-weight: 700;
+          font-size: 18px;
+        }
+        .people-map-plus-map .leaflet-control-attribution {
+          background: rgba(255, 255, 255, 0.8);
+          margin: 0;
+          padding: 0 5px;
+          color: #333;
+          font-size: 11px;
         }
         .people-map-plus-map .leaflet-container img,
         .people-map-plus-map .leaflet-container img.leaflet-tile {
