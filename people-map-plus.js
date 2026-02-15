@@ -368,9 +368,6 @@ class PeopleMapPlusCard extends HTMLElement {
       return;
     }
 
-    if (this._tracks) {
-      this._tracks.clearLayers();
-    }
     this._markers.clearLayers();
     const persons = this.resolvePersons();
     const points = [];
