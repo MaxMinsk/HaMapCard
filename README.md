@@ -11,6 +11,7 @@ Card type: `custom:people-map-plus`
 3. If `persons` is empty, auto-picks up to 5 `person.*` entities.
 4. Panel-friendly height mode for full-width/full-height map.
 5. Coordinate fallback for `person.*`: direct `latitude/longitude`, then `source` tracker, then matching `zone.*`.
+6. `persons` list is normalized (`max` -> `person.max` if such entity exists); if explicit list is invalid/empty, card falls back to auto-detected `person.*`.
 
 ## Files
 

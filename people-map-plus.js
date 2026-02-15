@@ -423,12 +423,19 @@ class PeopleMapPlusCard extends HTMLElement {
       return item;
     });
 
-    if (explicit.length > 0) {
+    if (!this._hass) {
       return explicit;
     }
 
-    if (!this._hass) {
-      return [];
+    const explicitResolved = explicit
+      .map((item) => ({
+        ...item,
+        entity: normalizePersonEntityId(this._hass, item.entity)
+      }))
+      .filter((item) => Boolean(item.entity));
+
+    if (explicitResolved.length > 0) {
+      return explicitResolved;
     }
 
     return Object.keys(this._hass.states)
@@ -532,6 +539,35 @@ function resolveEntityCoordinates(hass, state) {
   }
 
   return null;
+}
+
+function normalizePersonEntityId(hass, rawEntityId) {
+  if (typeof rawEntityId !== "string") {
+    return "";
+  }
+
+  const trimmed = rawEntityId.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  if (hass.states[trimmed]) {
+    return trimmed;
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (hass.states[lower]) {
+    return lower;
+  }
+
+  if (!trimmed.includes(".")) {
+    const prefixed = `person.${lower}`;
+    if (hass.states[prefixed]) {
+      return prefixed;
+    }
+  }
+
+  return "";
 }
 
 function readCoordsFromAttributes(attributes) {
