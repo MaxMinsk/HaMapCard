@@ -9,6 +9,7 @@ Card type: `custom:people-map-plus`
 1. OpenStreetMap base layer (Leaflet).
 2. Markers for configured `person.*` entities.
 3. If `persons` is empty, auto-picks up to 5 `person.*` entities.
+4. Panel-friendly height mode for full-width/full-height map.
 
 ## Files
 
@@ -31,6 +32,9 @@ persons:
   - person.maria
 default_zoom: 12
 fit_entities: true
+panel_mode: true
+panel_top_offset_px: 112
+min_height: 500
 ```
 
 ## Config
@@ -52,6 +56,14 @@ persons:
 ```
 
 `label`: `name | entity_id | state`
+
+Additional layout options:
+
+1. `panel_mode` (bool, default `true`) - uses viewport height.
+2. `panel_top_offset_px` (number, default `112`) - top UI offset for panel mode.
+3. `min_height` (number, default `360`) - minimum map height in panel mode.
+4. `height` (number, default `420`) - fixed height when `panel_mode: false`.
+5. `show_status` (bool, default `false`) - show/hide status text under map.
 
 ## Notes
 

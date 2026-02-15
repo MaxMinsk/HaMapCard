@@ -49,9 +49,13 @@ class PeopleMapPlusCard extends HTMLElement {
     this._map = undefined;
     this._markers = undefined;
     this._mapEl = undefined;
-    this._titleEl = undefined;
+    this._statusEl = undefined;
     this._initialized = false;
     this._fitDone = false;
+    this._resizeHandler = () => {
+      this.updateMapHeight();
+      this.invalidateMapSize();
+    };
   }
 
   setConfig(config) {
@@ -64,10 +68,17 @@ class PeopleMapPlusCard extends HTMLElement {
       default_center: [53.9, 27.5667],
       fit_entities: true,
       persons: [],
+      panel_mode: true,
+      panel_top_offset_px: 112,
+      min_height: 360,
+      height: 420,
+      show_status: false,
       ...config
     };
 
-    this.renderTitle();
+    this._fitDone = false;
+    this.updateMapHeight();
+    this.applyStatusVisibility();
     this.refreshMarkers();
   }
 
@@ -79,11 +90,13 @@ class PeopleMapPlusCard extends HTMLElement {
 
   connectedCallback() {
     this.ensureInitialized();
-    this.renderTitle();
+    window.addEventListener("resize", this._resizeHandler);
+    this.updateMapHeight();
     this.refreshMarkers();
   }
 
   disconnectedCallback() {
+    window.removeEventListener("resize", this._resizeHandler);
     if (this._map) {
       this._map.remove();
       this._map = undefined;
@@ -103,28 +116,38 @@ class PeopleMapPlusCard extends HTMLElement {
 
     this.innerHTML = `
       <style>
+        ha-card {
+          height: 100%;
+          overflow: hidden;
+        }
         .people-map-plus-card {
           display: flex;
           flex-direction: column;
-          gap: 8px;
-          padding: 12px;
-        }
-        .people-map-plus-title {
-          font-size: 1rem;
-          font-weight: 600;
-          line-height: 1.3;
-          color: var(--primary-text-color);
+          padding: 0;
+          height: 100%;
         }
         .people-map-plus-map {
           width: 100%;
           height: 420px;
-          border-radius: 10px;
+          min-height: 200px;
+          border-radius: var(--ha-card-border-radius, 12px);
           overflow: hidden;
           background: var(--secondary-background-color);
         }
         .people-map-plus-status {
+          padding: 8px 12px;
           font-size: 0.85rem;
           color: var(--secondary-text-color);
+          background: var(--ha-card-background, var(--card-background-color));
+        }
+        .people-map-plus-map .leaflet-container {
+          width: 100%;
+          height: 100%;
+        }
+        .people-map-plus-map .leaflet-container img,
+        .people-map-plus-map .leaflet-container img.leaflet-tile {
+          max-width: none !important;
+          max-height: none !important;
         }
         @media (max-width: 800px) {
           .people-map-plus-map {
@@ -134,17 +157,17 @@ class PeopleMapPlusCard extends HTMLElement {
       </style>
       <ha-card>
         <div class="people-map-plus-card">
-          <div class="people-map-plus-title"></div>
           <div class="people-map-plus-map"></div>
           <div class="people-map-plus-status"></div>
         </div>
       </ha-card>
     `;
 
-    this._titleEl = this.querySelector(".people-map-plus-title");
     this._mapEl = this.querySelector(".people-map-plus-map");
     this._statusEl = this.querySelector(".people-map-plus-status");
     this._initialized = true;
+    this.applyStatusVisibility();
+    this.updateMapHeight();
 
     this.initMap();
   }
@@ -170,21 +193,14 @@ class PeopleMapPlusCard extends HTMLElement {
       }).addTo(this._map);
 
       this._markers = L.layerGroup().addTo(this._map);
-      this.setStatus("Map ready.");
+      this.updateMapHeight();
+      this.invalidateMapSize();
+      this.setStatus("Map ready");
       this.refreshMarkers();
     } catch (error) {
       console.error("[people-map-plus] Failed to initialize map", error);
       this.setStatus("Map failed to load Leaflet.");
     }
-  }
-
-  renderTitle() {
-    if (!this._titleEl) {
-      return;
-    }
-
-    const title = this._config?.title?.trim() || "People Map Plus";
-    this._titleEl.textContent = title;
   }
 
   refreshMarkers() {
@@ -233,10 +249,12 @@ class PeopleMapPlusCard extends HTMLElement {
 
     if (points.length === 0) {
       this.setStatus("No person coordinates found.");
+      this.invalidateMapSize();
       return;
     }
 
     this.setStatus(`Markers: ${points.length}`);
+    this.invalidateMapSize();
 
     if (this._config.fit_entities && !this._fitDone) {
       this._map.fitBounds(window.L.latLngBounds(points), {
@@ -277,13 +295,50 @@ class PeopleMapPlusCard extends HTMLElement {
     }
   }
 
+  applyStatusVisibility() {
+    if (!this._statusEl) {
+      return;
+    }
+
+    const showStatus = Boolean(this._config?.show_status);
+    this._statusEl.style.display = showStatus ? "block" : "none";
+  }
+
+  updateMapHeight() {
+    if (!this._mapEl || !this._config) {
+      return;
+    }
+
+    const minHeight = clampInt(this._config.min_height, 200, 2000, 360);
+    const panelTopOffset = clampInt(this._config.panel_top_offset_px, 0, 500, 112);
+    const fixedHeight = clampInt(this._config.height, 200, 2000, 420);
+    const targetHeight = this._config.panel_mode
+      ? Math.max(minHeight, window.innerHeight - panelTopOffset)
+      : fixedHeight;
+
+    this._mapEl.style.height = `${targetHeight}px`;
+  }
+
+  invalidateMapSize() {
+    if (!this._map) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      if (this._map) {
+        this._map.invalidateSize(false);
+      }
+    });
+  }
+
   static getStubConfig() {
     return {
       type: "custom:people-map-plus",
       title: "People Map Plus",
       default_zoom: 12,
       fit_entities: true,
-      persons: []
+      persons: [],
+      panel_mode: true
     };
   }
 }
@@ -299,6 +354,24 @@ function toNumber(value) {
   }
 
   return null;
+}
+
+function clampInt(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  const rounded = Math.round(parsed);
+  if (rounded < min) {
+    return min;
+  }
+
+  if (rounded > max) {
+    return max;
+  }
+
+  return rounded;
 }
 
 if (!customElements.get("people-map-plus")) {
