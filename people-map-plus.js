@@ -147,6 +147,7 @@ class PeopleMapPlusCard extends HTMLElement {
           height: 100%;
           background: #ddd;
           outline: 0;
+          -webkit-tap-highlight-color: transparent;
         }
         .people-map-plus-map .leaflet-pane,
         .people-map-plus-map .leaflet-tile,
@@ -158,6 +159,27 @@ class PeopleMapPlusCard extends HTMLElement {
           position: absolute;
           left: 0;
           top: 0;
+        }
+        .people-map-plus-map .leaflet-zoom-box,
+        .people-map-plus-map .leaflet-image-layer,
+        .people-map-plus-map .leaflet-layer {
+          position: absolute;
+          left: 0;
+          top: 0;
+        }
+        .people-map-plus-map .leaflet-zoom-animated {
+          transform-origin: 0 0;
+          -webkit-transform-origin: 0 0;
+          -ms-transform-origin: 0 0;
+        }
+        .people-map-plus-map svg.leaflet-zoom-animated {
+          will-change: transform;
+        }
+        .people-map-plus-map .leaflet-zoom-anim .leaflet-zoom-animated {
+          transition: transform 0.25s cubic-bezier(0, 0, 0.25, 1);
+        }
+        .people-map-plus-map .leaflet-zoom-anim .leaflet-zoom-hide {
+          visibility: hidden;
         }
         .people-map-plus-map .leaflet-pane {
           z-index: 400;
@@ -186,8 +208,15 @@ class PeopleMapPlusCard extends HTMLElement {
         .people-map-plus-map .leaflet-map-pane svg {
           z-index: 200;
         }
+        .people-map-plus-map .leaflet-tile,
+        .people-map-plus-map .leaflet-marker-icon,
+        .people-map-plus-map .leaflet-marker-shadow {
+          user-select: none;
+          -webkit-user-drag: none;
+        }
         .people-map-plus-map .leaflet-tile {
           visibility: hidden;
+          filter: inherit;
         }
         .people-map-plus-map .leaflet-tile-loaded {
           visibility: inherit;
@@ -202,6 +231,8 @@ class PeopleMapPlusCard extends HTMLElement {
           position: relative;
           z-index: 800;
           pointer-events: auto;
+          float: left;
+          clear: both;
         }
         .people-map-plus-map .leaflet-top,
         .people-map-plus-map .leaflet-bottom {
@@ -210,20 +241,37 @@ class PeopleMapPlusCard extends HTMLElement {
           pointer-events: none;
         }
         .people-map-plus-map .leaflet-top {
-          top: 10px;
+          top: 0;
         }
         .people-map-plus-map .leaflet-right {
-          right: 10px;
+          right: 0;
+        }
+        .people-map-plus-map .leaflet-right .leaflet-control {
+          float: right;
         }
         .people-map-plus-map .leaflet-bottom {
-          bottom: 10px;
+          bottom: 0;
         }
         .people-map-plus-map .leaflet-left {
-          left: 10px;
+          left: 0;
+        }
+        .people-map-plus-map .leaflet-top .leaflet-control {
+          margin-top: 10px;
+        }
+        .people-map-plus-map .leaflet-right .leaflet-control {
+          margin-right: 10px;
+        }
+        .people-map-plus-map .leaflet-bottom .leaflet-control {
+          margin-bottom: 10px;
+        }
+        .people-map-plus-map .leaflet-left .leaflet-control {
+          margin-left: 10px;
         }
         .people-map-plus-map .leaflet-control-zoom {
           border: 2px solid rgba(0, 0, 0, 0.2);
           border-radius: 4px;
+          background-clip: padding-box;
+          box-shadow: 0 1px 5px rgba(0, 0, 0, 0.65);
         }
         .people-map-plus-map .leaflet-control-zoom a {
           width: 26px;
