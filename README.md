@@ -74,6 +74,7 @@ Tracks options:
 1. `show_tracks` (bool, default `true`) - render movement lines.
 2. `tracks_api_url` (string) - backend tracks endpoint URL.
    - default: `/api/hassio_ingress/cb4e65a6_people_map_plus/api/people_map_plus/tracks`
+3. `addon_slug` (string, default `cb4e65a6_people_map_plus`) - used for auto-discovery of ingress URL.
 3. `track_days` (number, `1..30`, default `1`) - how many days back to load.
 4. `track_entities` (array, optional) - explicit entities for tracks.
 5. `tracks_max_points` (number, default `500`) - max points per entity.
@@ -84,4 +85,5 @@ Tracks options:
 
 1. Leaflet is loaded from CDN (`unpkg.com`) at runtime.
 2. Tracks layer requires add-on version `0.1.15+` (`/api/people_map_plus/tracks` endpoint).
-3. This is a minimal starter card for further integration with People Map Plus backend API.
+3. Card tries multiple ingress URL variants and auto-discovers ingress base via Supervisor API when possible.
+4. This is a minimal starter card for further integration with People Map Plus backend API.
