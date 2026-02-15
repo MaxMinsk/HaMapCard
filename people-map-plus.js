@@ -629,27 +629,25 @@ class PeopleMapPlusCard extends HTMLElement {
     }
 
     try {
-      const response = await fetch(`/api/hassio/addons/${encodeURIComponent(addonSlug)}/info`, {
+      const response = await fetch(`/api/hassio_ingress/${encodeURIComponent(addonSlug)}/`, {
         method: "GET",
-        credentials: "include"
+        credentials: "include",
+        redirect: "follow"
       });
       if (!response.ok) {
         return;
       }
 
-      const contentType = String(response.headers.get("content-type") || "").toLowerCase();
-      if (!contentType.includes("application/json")) {
-        return;
+      const resolvedUrl = response.url || "";
+      const match = resolvedUrl.match(/\/api\/hassio_ingress\/([^/]+)(?:\/|$)/i);
+      if (match && match[1]) {
+        this._resolvedIngressBase = `/api/hassio_ingress/${match[1]}`;
+      } else {
+        this._resolvedIngressBase = `/api/hassio_ingress/${addonSlug}`;
       }
-
-      const payload = await response.json();
-      const ingressUrl = payload?.data?.ingress_url || payload?.ingress_url;
-      if (typeof ingressUrl === "string" && ingressUrl.trim()) {
-        this._resolvedIngressBase = ingressUrl.replace(/\/+$/, "");
-        this._ingressResolvedAt = now;
-      }
+      this._ingressResolvedAt = now;
     } catch (error) {
-      console.warn("[people-map-plus] Unable to resolve ingress base", error);
+      console.warn("[people-map-plus] Unable to resolve ingress session base", error);
     }
   }
 
