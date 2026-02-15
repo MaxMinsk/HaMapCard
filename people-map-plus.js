@@ -487,6 +487,8 @@ class PeopleMapPlusCard extends HTMLElement {
     }
 
     this._tracks.clearLayers();
+    const dayWindow = clampInt(this._config?.track_days, 1, 30, 1);
+    const nowMs = Date.now();
     const colorByEntity = new Map();
     for (const person of persons) {
       colorByEntity.set(person.entity, person.color || "#00b0ff");
@@ -495,27 +497,39 @@ class PeopleMapPlusCard extends HTMLElement {
     for (const track of tracks) {
       const entityId = typeof track?.entityId === "string" ? track.entityId : "";
       const points = Array.isArray(track?.points) ? track.points : [];
-      const latLngs = points
+      const normalizedPoints = points
         .map((point) => {
           const lat = toNumber(point?.lat);
           const lon = toNumber(point?.lon);
-          return lat === null || lon === null ? null : [lat, lon];
+          const tsMs = parseIsoTimestampToMs(point?.ts);
+          return lat === null || lon === null ? null : { lat, lon, tsMs };
         })
         .filter(Boolean);
 
-      if (latLngs.length < 2) {
+      if (normalizedPoints.length < 2) {
         continue;
       }
 
       const color = colorByEntity.get(entityId) || "#00b0ff";
-      window.L.polyline(latLngs, {
-        color,
-        weight: 3,
-        opacity: 0.85
-      }).addTo(this._tracks);
+      for (let index = 1; index < normalizedPoints.length; index += 1) {
+        const previous = normalizedPoints[index - 1];
+        const current = normalizedPoints[index];
+        const dayIndex = resolveSegmentDayIndex(previous.tsMs, current.tsMs, nowMs, dayWindow);
+        const opacity = opacityForTrackDay(dayIndex, dayWindow);
 
-      const start = latLngs[0];
-      const end = latLngs[latLngs.length - 1];
+        window.L.polyline([
+          [previous.lat, previous.lon],
+          [current.lat, current.lon]
+        ], {
+          color,
+          weight: 3,
+          opacity
+        }).addTo(this._tracks);
+      }
+
+      const start = [normalizedPoints[0].lat, normalizedPoints[0].lon];
+      const endPoint = normalizedPoints[normalizedPoints.length - 1];
+      const end = [endPoint.lat, endPoint.lon];
       window.L.circleMarker(start, {
         radius: 4,
         color,
@@ -789,6 +803,59 @@ function clampInt(value, min, max, fallback) {
   }
 
   return rounded;
+}
+
+function parseIsoTimestampToMs(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveSegmentDayIndex(tsMsA, tsMsB, nowMs, dayWindow) {
+  const indexA = resolvePointDayIndex(tsMsA, nowMs, dayWindow);
+  const indexB = resolvePointDayIndex(tsMsB, nowMs, dayWindow);
+  return Math.max(indexA, indexB);
+}
+
+function resolvePointDayIndex(tsMs, nowMs, dayWindow) {
+  if (!Number.isFinite(tsMs)) {
+    return 0;
+  }
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const deltaMs = Math.max(0, nowMs - tsMs);
+  const rawIndex = Math.floor(deltaMs / dayMs);
+  return clampInt(rawIndex, 0, Math.max(0, dayWindow - 1), 0);
+}
+
+function opacityForTrackDay(dayIndex, dayWindow) {
+  if (dayWindow <= 1) {
+    return 1;
+  }
+
+  const normalized = clampNumber(dayIndex / (dayWindow - 1), 0, 1, 0);
+  const opacity = 1 - (normalized * 0.9);
+  return Number(opacity.toFixed(3));
+}
+
+function clampNumber(value, min, max, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  if (parsed < min) {
+    return min;
+  }
+
+  if (parsed > max) {
+    return max;
+  }
+
+  return parsed;
 }
 
 if (!customElements.get("people-map-plus")) {
