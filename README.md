@@ -87,7 +87,7 @@ Photos options:
 
 1. `show_photos` (bool, default `true`) - render photo markers layer.
 2. `photos_api_endpoint` (string, default `people_map_plus/photos`) - Home Assistant API endpoint path used via `hass.callApi`.
-3. `photo_days` (number, `1..30`, default `5`) - how many days back to request photos.
+3. `photo_days` (number, `1..365`, default `5`) - how many days back to request photos.
 4. `photo_limit` (number, default `200`) - max photos returned by API, `0` means unlimited.
 5. `photos_refresh_seconds` (number, default `60`) - fetch throttle window for photos.
 6. `photo_marker_size` (number, `24..96`, default `40`) - thumbnail marker size in px.

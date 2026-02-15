@@ -539,7 +539,7 @@ class PeopleMapPlusCard extends HTMLElement {
       return;
     }
 
-    const days = clampInt(this._config.photo_days, 1, 30, 5);
+    const days = clampInt(this._config.photo_days, 1, 365, 5);
     const limit = parsePhotoLimit(this._config.photo_limit, 200);
     const refreshSeconds = clampInt(this._config.photos_refresh_seconds, 5, 600, 60);
     const fetchKey = `${endpoint}|${days}|${limit}`;
