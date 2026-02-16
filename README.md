@@ -14,6 +14,7 @@ Card type: `custom:people-map-plus`
 6. `persons` list is normalized (`max` -> `person.max` if such entity exists); if explicit list is invalid/empty, card falls back to auto-detected `person.*`.
 7. Photo layer from integration API with circular thumbnail markers, map popup preview, and in-card full-size viewer.
 8. If photo circles overlap, only the newest photo is shown.
+9. Stops layer: stationary points detected from tracks with hover tooltip (`person + date/time + duration`).
 
 ## Files
 
@@ -41,6 +42,9 @@ panel_top_offset_px: 112
 min_height: 500
 show_tracks: true
 track_days: 3
+show_stops: true
+stops_min_minutes: 20
+stops_radius_m: 120
 show_photos: true
 photo_days: 5
 ```
@@ -82,6 +86,10 @@ Tracks options:
 5. `tracks_max_points` (number, default `500`) - max points per entity.
 6. `tracks_min_distance_m` (number, default `0`) - distance dedupe on backend request.
 7. `tracks_refresh_seconds` (number, default `30`) - fetch throttle window.
+8. `show_stops` (bool, default `true`) - render stop points detected from tracks.
+9. `stops_min_minutes` (number, default `20`) - minimum stationary duration to consider a stop.
+10. `stops_radius_m` (number, default `120`) - max movement radius while stationary.
+11. `stops_marker_size` (number, default `10`) - stop marker size in px.
 
 Photos options:
 

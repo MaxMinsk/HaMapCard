@@ -51,6 +51,7 @@ class PeopleMapPlusCard extends HTMLElement {
     this._map = undefined;
     this._photos = undefined;
     this._tracks = undefined;
+    this._stops = undefined;
     this._markers = undefined;
     this._mapEl = undefined;
     this._statusEl = undefined;
@@ -92,6 +93,10 @@ class PeopleMapPlusCard extends HTMLElement {
       tracks_max_points: 500,
       tracks_min_distance_m: 0,
       tracks_refresh_seconds: 30,
+      show_stops: true,
+      stops_min_minutes: 20,
+      stops_radius_m: 120,
+      stops_marker_size: 10,
       show_photos: true,
       photos_api_endpoint: DEFAULT_PHOTOS_API_ENDPOINT,
       photo_days: 5,
@@ -128,6 +133,7 @@ class PeopleMapPlusCard extends HTMLElement {
       this._map = undefined;
       this._photos = undefined;
       this._tracks = undefined;
+      this._stops = undefined;
       this._markers = undefined;
       this._fitDone = false;
       this._photoItemsCache = [];
@@ -453,6 +459,7 @@ class PeopleMapPlusCard extends HTMLElement {
 
       this._photos = L.layerGroup().addTo(this._map);
       this._tracks = L.layerGroup().addTo(this._map);
+      this._stops = L.layerGroup().addTo(this._map);
       this._markers = L.layerGroup().addTo(this._map);
       this._map.on("zoomend moveend", () => {
         if (this._config?.show_photos && this._photoItemsCache.length > 0) {
@@ -541,8 +548,11 @@ class PeopleMapPlusCard extends HTMLElement {
       return;
     }
 
-    if (!this._config.show_tracks) {
+    if (!this._config.show_tracks && !this._config.show_stops) {
       this._tracks.clearLayers();
+      if (this._stops) {
+        this._stops.clearLayers();
+      }
       return;
     }
 
@@ -797,16 +807,26 @@ class PeopleMapPlusCard extends HTMLElement {
   }
 
   renderTracks(tracks, persons) {
-    if (!this._tracks || !window.L) {
+    if (!this._tracks || !this._stops || !window.L) {
       return;
     }
 
     this._tracks.clearLayers();
+    this._stops.clearLayers();
+    const showTracks = Boolean(this._config?.show_tracks);
+    const showStops = Boolean(this._config?.show_stops);
     const dayWindow = clampInt(this._config?.track_days, 1, 30, 1);
+    const stopMinMinutes = clampInt(this._config?.stops_min_minutes, 1, 24 * 60, 20);
+    const stopRadiusMeters = clampInt(this._config?.stops_radius_m, 10, 1000, 120);
+    const stopMarkerSize = clampInt(this._config?.stops_marker_size, 6, 24, 10);
     const nowMs = Date.now();
     const colorByEntity = new Map();
+    const labelByEntity = new Map();
     for (const person of persons) {
-      colorByEntity.set(person.entity, person.color || "#00b0ff");
+      const entityId = person.entity;
+      colorByEntity.set(entityId, person.color || "#00b0ff");
+      const friendlyName = this._hass?.states?.[entityId]?.attributes?.friendly_name;
+      labelByEntity.set(entityId, typeof friendlyName === "string" && friendlyName ? friendlyName : entityId);
     }
 
     for (const track of tracks) {
@@ -826,39 +846,62 @@ class PeopleMapPlusCard extends HTMLElement {
       }
 
       const color = colorByEntity.get(entityId) || "#00b0ff";
-      for (let index = 1; index < normalizedPoints.length; index += 1) {
-        const previous = normalizedPoints[index - 1];
-        const current = normalizedPoints[index];
-        const dayIndex = resolveSegmentDayIndex(previous.tsMs, current.tsMs, nowMs, dayWindow);
-        const opacity = opacityForTrackDay(dayIndex, dayWindow);
+      if (showTracks) {
+        for (let index = 1; index < normalizedPoints.length; index += 1) {
+          const previous = normalizedPoints[index - 1];
+          const current = normalizedPoints[index];
+          const dayIndex = resolveSegmentDayIndex(previous.tsMs, current.tsMs, nowMs, dayWindow);
+          const opacity = opacityForTrackDay(dayIndex, dayWindow);
 
-        window.L.polyline([
-          [previous.lat, previous.lon],
-          [current.lat, current.lon]
-        ], {
-          color,
-          weight: 3,
-          opacity
-        }).addTo(this._tracks);
+          window.L.polyline([
+            [previous.lat, previous.lon],
+            [current.lat, current.lon]
+          ], {
+            color,
+            weight: 3,
+            opacity
+          }).addTo(this._tracks);
+        }
       }
 
-      const start = [normalizedPoints[0].lat, normalizedPoints[0].lon];
-      const endPoint = normalizedPoints[normalizedPoints.length - 1];
-      const end = [endPoint.lat, endPoint.lon];
-      window.L.circleMarker(start, {
-        radius: 4,
-        color,
-        weight: 1,
-        fillColor: color,
-        fillOpacity: 0.7
-      }).bindTooltip(`${entityId} start`).addTo(this._tracks);
-      window.L.circleMarker(end, {
-        radius: 4,
-        color,
-        weight: 1,
-        fillColor: color,
-        fillOpacity: 1
-      }).bindTooltip(`${entityId} end`).addTo(this._tracks);
+      if (showTracks) {
+        const start = [normalizedPoints[0].lat, normalizedPoints[0].lon];
+        const endPoint = normalizedPoints[normalizedPoints.length - 1];
+        const end = [endPoint.lat, endPoint.lon];
+        window.L.circleMarker(start, {
+          radius: 4,
+          color,
+          weight: 1,
+          fillColor: color,
+          fillOpacity: 0.7
+        }).bindTooltip(`${entityId} start`).addTo(this._tracks);
+        window.L.circleMarker(end, {
+          radius: 4,
+          color,
+          weight: 1,
+          fillColor: color,
+          fillOpacity: 1
+        }).bindTooltip(`${entityId} end`).addTo(this._tracks);
+      }
+
+      if (showStops) {
+        const stops = detectStopsFromTrackPoints(normalizedPoints, stopMinMinutes * 60 * 1000, stopRadiusMeters);
+        const personLabel = labelByEntity.get(entityId) || entityId || "Person";
+        for (const stop of stops) {
+          const tooltip = `${escapeHtml(personLabel)}<br/>${escapeHtml(formatStopRange(stop.startTsMs, stop.endTsMs))}`;
+          window.L.circleMarker([stop.lat, stop.lon], {
+            radius: Math.round(stopMarkerSize / 2),
+            color,
+            weight: 2,
+            fillColor: "#ffffff",
+            fillOpacity: 0.9,
+            opacity: 0.95
+          }).bindTooltip(tooltip, {
+            direction: "top",
+            sticky: true
+          }).addTo(this._stops);
+        }
+      }
     }
   }
 
@@ -962,6 +1005,10 @@ class PeopleMapPlusCard extends HTMLElement {
       show_tracks: true,
       tracks_api_endpoint: DEFAULT_TRACKS_API_ENDPOINT,
       track_days: 1,
+      show_stops: true,
+      stops_min_minutes: 20,
+      stops_radius_m: 120,
+      stops_marker_size: 10,
       show_photos: true,
       photos_api_endpoint: DEFAULT_PHOTOS_API_ENDPOINT,
       photo_days: 5
@@ -1209,6 +1256,85 @@ function parsePhotoLimit(value, fallback) {
   }
 
   return Math.min(rounded, 200000);
+}
+
+function detectStopsFromTrackPoints(points, minDurationMs, radiusMeters) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return [];
+  }
+
+  const normalized = points
+    .filter((point) => Number.isFinite(point?.tsMs))
+    .sort((a, b) => a.tsMs - b.tsMs);
+  if (normalized.length < 2) {
+    return [];
+  }
+
+  const stops = [];
+  let startIndex = 0;
+  while (startIndex < normalized.length - 1) {
+    const anchor = normalized[startIndex];
+    let endIndex = startIndex;
+    let sumLat = anchor.lat;
+    let sumLon = anchor.lon;
+    let count = 1;
+
+    for (let index = startIndex + 1; index < normalized.length; index += 1) {
+      const point = normalized[index];
+      const distance = haversineMeters(anchor.lat, anchor.lon, point.lat, point.lon);
+      if (distance > radiusMeters) {
+        break;
+      }
+
+      endIndex = index;
+      sumLat += point.lat;
+      sumLon += point.lon;
+      count += 1;
+    }
+
+    if (endIndex > startIndex) {
+      const startTsMs = anchor.tsMs;
+      const endTsMs = normalized[endIndex].tsMs;
+      const durationMs = endTsMs - startTsMs;
+      if (durationMs >= minDurationMs) {
+        stops.push({
+          lat: sumLat / count,
+          lon: sumLon / count,
+          startTsMs,
+          endTsMs,
+          durationMs
+        });
+      }
+      startIndex = endIndex + 1;
+      continue;
+    }
+
+    startIndex += 1;
+  }
+
+  return stops;
+}
+
+function haversineMeters(latA, lonA, latB, lonB) {
+  const toRadians = (value) => (value * Math.PI) / 180;
+  const earthRadiusMeters = 6371000;
+  const dLat = toRadians(latB - latA);
+  const dLon = toRadians(lonB - lonA);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRadians(latA)) * Math.cos(toRadians(latB)) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusMeters * c;
+}
+
+function formatStopRange(startTsMs, endTsMs) {
+  if (!Number.isFinite(startTsMs) || !Number.isFinite(endTsMs)) {
+    return "Stop";
+  }
+
+  const startText = new Date(startTsMs).toLocaleString();
+  const endText = new Date(endTsMs).toLocaleString();
+  const durationMinutes = Math.max(1, Math.round((endTsMs - startTsMs) / (60 * 1000)));
+  return `${startText} - ${endText} (${durationMinutes} min)`;
 }
 
 function selectVisiblePhotosByOverlap(map, candidates, markerRadiusPx) {
