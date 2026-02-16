@@ -64,10 +64,7 @@ class PeopleMapPlusCard extends HTMLElement {
     this._lastPhotosFetchKey = "";
     this._lastPhotosFetchAt = 0;
     this._photoItemsCache = [];
-    this._photoViewerState = {
-      step: 0,
-      itemKey: ""
-    };
+    this._activePhotoItemKey = "";
     this._resizeHandler = () => {
       this.updateMapHeight();
       this.invalidateMapSize();
@@ -337,6 +334,30 @@ class PeopleMapPlusCard extends HTMLElement {
           background-position: center;
           box-shadow: 0 2px 7px rgba(0, 0, 0, 0.5);
         }
+        .people-map-plus-map .leaflet-popup-content {
+          margin: 10px;
+        }
+        .people-map-plus-photo-popup {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+        }
+        .people-map-plus-photo-popup-img {
+          display: block;
+          width: min(72vw, 360px);
+          max-width: 100%;
+          max-height: 52vh;
+          border-radius: 10px;
+          object-fit: contain;
+          box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+          cursor: zoom-in;
+        }
+        .people-map-plus-photo-popup-meta {
+          color: var(--primary-text-color);
+          font-size: 0.8rem;
+          text-align: center;
+        }
         .people-map-plus-photo-viewer {
           position: absolute;
           inset: 0;
@@ -346,13 +367,10 @@ class PeopleMapPlusCard extends HTMLElement {
           align-items: center;
           justify-content: center;
           padding: 16px;
-          cursor: zoom-in;
+          cursor: zoom-out;
         }
         .people-map-plus-photo-viewer.active {
           display: flex;
-        }
-        .people-map-plus-photo-viewer.full {
-          cursor: zoom-out;
         }
         .people-map-plus-photo-viewer-content {
           width: min(96%, 1100px);
@@ -441,6 +459,7 @@ class PeopleMapPlusCard extends HTMLElement {
           this.renderPhotos(this._photoItemsCache);
         }
       });
+      this._map.on("popupopen", (event) => this.onPhotoPopupOpen(event));
       this.updateMapHeight();
       this.invalidateMapSize();
       this.setStatus("Map ready");
@@ -634,7 +653,7 @@ class PeopleMapPlusCard extends HTMLElement {
       }
 
       const previewUrl = normalizeMediaUrl(item?.previewUrl || item?.thumbUrl || item?.mediaUrl);
-      const mediaUrl = normalizeMediaUrl(item?.mediaUrl || previewUrl);
+      const mediaUrl = normalizeMediaUrl(item?.mediaUrl);
       if (!previewUrl || !mediaUrl) {
         continue;
       }
@@ -663,47 +682,53 @@ class PeopleMapPlusCard extends HTMLElement {
       });
 
       const marker = window.L.marker([item.lat, item.lon], { icon }).addTo(this._photos);
-      marker.on("click", () => this.onPhotoMarkerClick(item));
+      marker.bindPopup(this.renderPhotoPopupContent(item), {
+        maxWidth: 420,
+        minWidth: 180,
+        autoPanPadding: [24, 24],
+        closeButton: false
+      });
     }
   }
 
-  onPhotoMarkerClick(item) {
-    if (!item || !item.itemKey) {
+  onPhotoPopupOpen(event) {
+    const popupElement = event?.popup?.getElement?.();
+    if (!popupElement) {
       return;
     }
 
-    if (this._photoViewerState.itemKey !== item.itemKey || this._photoViewerState.step === 0) {
-      this._photoViewerState = { step: 1, itemKey: item.itemKey };
-      this.renderPhotoViewer(item);
+    const image = popupElement.querySelector(".people-map-plus-photo-popup-img");
+    if (!(image instanceof HTMLElement) || image.dataset.boundClick === "1") {
       return;
     }
 
-    if (this._photoViewerState.step === 1) {
-      this._photoViewerState = { step: 2, itemKey: item.itemKey };
-      this.renderPhotoViewer(item);
+    image.dataset.boundClick = "1";
+    image.addEventListener("click", (eventClick) => {
+      eventClick.preventDefault();
+      eventClick.stopPropagation();
+      const itemKey = image.dataset.itemKey || "";
+      if (!itemKey) {
+        return;
+      }
+
+      this.openFullPhotoByKey(itemKey);
+    });
+  }
+
+  openFullPhotoByKey(itemKey) {
+    const item = this.findPhotoItemByKey(itemKey);
+    if (!item) {
       return;
     }
 
-    this.closePhotoViewer();
+    if (this._map) {
+      this._map.closePopup();
+    }
+
+    this.renderPhotoViewer(item);
   }
 
   onPhotoViewerClick() {
-    if (!this._photoViewerState.itemKey || this._photoViewerState.step === 0) {
-      return;
-    }
-
-    const item = this.findPhotoItemByKey(this._photoViewerState.itemKey);
-    if (!item) {
-      this.closePhotoViewer();
-      return;
-    }
-
-    if (this._photoViewerState.step === 1) {
-      this._photoViewerState = { step: 2, itemKey: item.itemKey };
-      this.renderPhotoViewer(item);
-      return;
-    }
-
     this.closePhotoViewer();
   }
 
@@ -714,7 +739,7 @@ class PeopleMapPlusCard extends HTMLElement {
 
     for (const rawItem of this._photoItemsCache) {
       const previewUrl = normalizeMediaUrl(rawItem?.previewUrl || rawItem?.thumbUrl || rawItem?.mediaUrl);
-      const mediaUrl = normalizeMediaUrl(rawItem?.mediaUrl || previewUrl);
+      const mediaUrl = normalizeMediaUrl(rawItem?.mediaUrl);
       const currentKey = String(rawItem?.mediaRelPath || mediaUrl);
       if (currentKey !== itemKey) {
         continue;
@@ -731,33 +756,42 @@ class PeopleMapPlusCard extends HTMLElement {
     return null;
   }
 
+  renderPhotoPopupContent(item) {
+    const keyAttr = escapeHtmlAttr(item.itemKey);
+    const previewAttr = escapeHtmlAttr(item.previewUrl);
+    const title = escapeHtml(item.capturedText || "Photo");
+    return `
+      <div class="people-map-plus-photo-popup">
+        <img
+          class="people-map-plus-photo-popup-img"
+          src="${previewAttr}"
+          alt="photo preview"
+          loading="lazy"
+          data-item-key="${keyAttr}"
+        />
+        <div class="people-map-plus-photo-popup-meta">${title}</div>
+      </div>
+    `;
+  }
+
   renderPhotoViewer(item) {
     if (!this._photoViewerEl || !this._photoViewerImgEl || !this._photoViewerMetaEl) {
       return;
     }
 
-    const step = this._photoViewerState.step;
-    if (step !== 1 && step !== 2) {
-      this.closePhotoViewer();
-      return;
-    }
-
-    const imageUrl = step === 1 ? item.previewUrl : item.mediaUrl;
-    this._photoViewerImgEl.src = imageUrl;
-    this._photoViewerMetaEl.textContent = step === 1
-      ? `${item.capturedText} • thumbnail`
-      : `${item.capturedText} • full`;
+    this._activePhotoItemKey = item.itemKey;
+    this._photoViewerImgEl.src = item.mediaUrl;
+    this._photoViewerMetaEl.textContent = item.capturedText;
     this._photoViewerEl.classList.add("active");
-    this._photoViewerEl.classList.toggle("full", step === 2);
   }
 
   closePhotoViewer() {
-    this._photoViewerState = { step: 0, itemKey: "" };
+    this._activePhotoItemKey = "";
     if (!this._photoViewerEl || !this._photoViewerImgEl || !this._photoViewerMetaEl) {
       return;
     }
 
-    this._photoViewerEl.classList.remove("active", "full");
+    this._photoViewerEl.classList.remove("active");
     this._photoViewerImgEl.src = "";
     this._photoViewerMetaEl.textContent = "";
   }
