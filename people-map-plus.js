@@ -3,6 +3,8 @@ const LEAFLET_CSS_ID = "people-map-plus-leaflet-css";
 const LEAFLET_SCRIPT_ID = "people-map-plus-leaflet-js";
 const DEFAULT_TRACKS_API_ENDPOINT = "people_map_plus/tracks";
 const DEFAULT_PHOTOS_API_ENDPOINT = "people_map_plus/photos";
+const PHOTOS_MARKERS_PANE = "people-map-plus-photos-pane";
+const AUX_MARKERS_PANE = "people-map-plus-aux-pane";
 
 let leafletPromise;
 
@@ -479,6 +481,18 @@ class PeopleMapPlusCard extends HTMLElement {
         attributionControl: true
       }).setView(center, zoom);
 
+      this._map.createPane(AUX_MARKERS_PANE);
+      const auxPane = this._map.getPane(AUX_MARKERS_PANE);
+      if (auxPane) {
+        auxPane.style.zIndex = "605";
+      }
+
+      this._map.createPane(PHOTOS_MARKERS_PANE);
+      const photosPane = this._map.getPane(PHOTOS_MARKERS_PANE);
+      if (photosPane) {
+        photosPane.style.zIndex = "620";
+      }
+
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap contributors"
@@ -718,7 +732,10 @@ class PeopleMapPlusCard extends HTMLElement {
         iconAnchor
       });
 
-      const marker = window.L.marker([item.lat, item.lon], { icon }).addTo(this._photos);
+      const marker = window.L.marker([item.lat, item.lon], {
+        icon,
+        pane: PHOTOS_MARKERS_PANE
+      }).addTo(this._photos);
       marker.bindTooltip(this.renderPhotoTooltipContent(item), {
         direction: "top",
         offset: [0, -Math.max(12, Math.round(markerSize * 0.6))],
@@ -970,7 +987,10 @@ class PeopleMapPlusCard extends HTMLElement {
           iconSize: [sizePx, sizePx],
           iconAnchor: [Math.round(sizePx / 2), Math.round(sizePx / 2)]
         });
-        window.L.marker([stop.lat, stop.lon], { icon })
+        window.L.marker([stop.lat, stop.lon], {
+          icon,
+          pane: AUX_MARKERS_PANE
+        })
           .bindTooltip(stop.tooltip, {
             direction: "top",
             offset: [0, -Math.max(10, Math.round(sizePx / 2) + 4)],
@@ -990,7 +1010,10 @@ class PeopleMapPlusCard extends HTMLElement {
           iconSize: [trackPointSize, trackPointSize],
           iconAnchor: [Math.round(trackPointSize / 2), Math.round(trackPointSize / 2)]
         });
-        window.L.marker([point.lat, point.lon], { icon })
+        window.L.marker([point.lat, point.lon], {
+          icon,
+          pane: AUX_MARKERS_PANE
+        })
           .bindTooltip(point.tooltip, {
             direction: "top",
             offset: [0, -Math.max(8, Math.round(trackPointSize / 2) + 4)],
