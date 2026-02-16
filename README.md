@@ -100,9 +100,10 @@ Photos options:
 5. `photos_refresh_seconds` (number, default `60`) - fetch throttle window for photos.
 6. `photo_marker_size` (number, `24..96`, default `40`) - thumbnail marker size in px.
 7. Photo click flow:
-   - hover/click marker: opens dark tooltip preview on the map;
+   - hover marker: opens dark tooltip preview on the map;
+   - click marker: opens full-size photo immediately;
    - click outside map tooltip: closes preview;
-   - click preview image: opens full-size photo in-card;
+   - click preview image: opens full-size photo in-card (same as marker click);
    - click full-size photo: closes viewer and returns to map.
 
 ## Notes

@@ -709,7 +709,10 @@ class PeopleMapPlusCard extends HTMLElement {
         className: "people-map-plus-tooltip",
         interactive: true
       });
-      marker.on("click", () => marker.openTooltip());
+      marker.on("click", (eventClick) => {
+        eventClick?.originalEvent?.stopPropagation?.();
+        this.openFullPhotoByKey(item.itemKey);
+      });
     }
   }
 
@@ -917,7 +920,7 @@ class PeopleMapPlusCard extends HTMLElement {
         for (const stop of stops) {
           const tooltip = `${escapeHtml(personLabel)}<br/>${escapeHtml(formatStopRange(stop.startTsMs, stop.endTsMs))}`;
           const stopMarker = window.L.circleMarker([stop.lat, stop.lon], {
-            radius: Math.round(stopMarkerSize / 2),
+            radius: Math.max(6, Math.round(stopMarkerSize / 2)),
             color,
             weight: 2,
             fillColor: "#ffffff",
@@ -933,6 +936,9 @@ class PeopleMapPlusCard extends HTMLElement {
             interactive: true
           }).addTo(this._stops);
 
+          stopMarker.on("mouseover", () => stopMarker.openTooltip());
+          stopMarker.on("mousemove", () => stopMarker.openTooltip());
+          stopMarker.on("mouseout", () => stopMarker.closeTooltip());
           stopMarker.on("click", () => stopMarker.openTooltip());
         }
       }
