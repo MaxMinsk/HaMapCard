@@ -15,6 +15,8 @@ Card type: `custom:people-map-plus`
 7. Photo layer from integration API with circular thumbnail markers, dark tooltip preview, and in-card full-size viewer.
 8. If photo circles overlap, only the newest photo is shown.
 9. Stops layer: stationary points detected from tracks with dark tooltip (`person + date/time + duration`) and dedicated stop markers.
+10. Stop overlap rule: if stop circles intersect, only the newest stop is shown.
+11. Track points are additionally rendered as stop-like markers with 2x smaller size.
 
 ## Files
 
@@ -90,6 +92,8 @@ Tracks options:
 9. `stops_min_minutes` (number, default `20`) - minimum stationary duration to consider a stop.
 10. `stops_radius_m` (number, default `120`) - max movement radius while stationary.
 11. `stops_marker_size` (number, default `10`) - stop marker size in px.
+12. If stop circles overlap, only the newest stop is rendered.
+13. Track points are rendered with marker size `stops_marker_size / 2`.
 
 Photos options:
 

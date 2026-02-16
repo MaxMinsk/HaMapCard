@@ -360,6 +360,13 @@ class PeopleMapPlusCard extends HTMLElement {
           box-shadow: 0 2px 7px rgba(0, 0, 0, 0.45);
           box-sizing: border-box;
         }
+        .people-map-plus-track-point-marker {
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.86);
+          border: 2px solid #2fa7ff;
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+          box-sizing: border-box;
+        }
         .people-map-plus-map .leaflet-tooltip-top.people-map-plus-tooltip::before {
           border-top-color: rgba(10, 14, 20, 0.92);
         }
@@ -699,7 +706,7 @@ class PeopleMapPlusCard extends HTMLElement {
       });
     }
 
-    const selected = selectVisiblePhotosByOverlap(this._map, candidates, markerRadiusPx);
+    const selected = selectVisibleMarkersByOverlap(this._map, candidates, markerRadiusPx);
     const iconSize = [markerSize, markerSize];
     const iconAnchor = [Math.round(markerSize / 2), Math.round(markerSize / 2)];
     for (const item of selected) {
@@ -859,9 +866,12 @@ class PeopleMapPlusCard extends HTMLElement {
     const stopMinMinutes = clampInt(this._config?.stops_min_minutes, 1, 24 * 60, 20);
     const stopRadiusMeters = clampInt(this._config?.stops_radius_m, 10, 1000, 120);
     const stopMarkerSize = clampInt(this._config?.stops_marker_size, 6, 24, 10);
+    const trackPointSize = Math.max(4, Math.round(stopMarkerSize / 2));
     const nowMs = Date.now();
     const colorByEntity = new Map();
     const labelByEntity = new Map();
+    const stopCandidates = [];
+    const trackPointCandidates = [];
     for (const person of persons) {
       const entityId = person.entity;
       colorByEntity.set(entityId, person.color || "#00b0ff");
@@ -902,6 +912,17 @@ class PeopleMapPlusCard extends HTMLElement {
             opacity
           }).addTo(this._tracks);
         }
+
+        const personLabel = labelByEntity.get(entityId) || entityId || "Person";
+        for (const point of normalizedPoints) {
+          trackPointCandidates.push({
+            lat: point.lat,
+            lon: point.lon,
+            capturedMs: Number.isFinite(point.tsMs) ? point.tsMs : 0,
+            color,
+            tooltip: `${escapeHtml(personLabel)}<br/>${escapeHtml(formatTimestampMs(point.tsMs))}`
+          });
+        }
       }
 
       if (showTracks) {
@@ -928,16 +949,29 @@ class PeopleMapPlusCard extends HTMLElement {
         const stops = detectStopsFromTrackPoints(normalizedPoints, stopMinMinutes * 60 * 1000, stopRadiusMeters);
         const personLabel = labelByEntity.get(entityId) || entityId || "Person";
         for (const stop of stops) {
-          const tooltip = `${escapeHtml(personLabel)}<br/>${escapeHtml(formatStopRange(stop.startTsMs, stop.endTsMs))}`;
-          const sizePx = Math.max(10, stopMarkerSize);
-          const icon = window.L.divIcon({
-            className: "",
-            html: `<div class="people-map-plus-stop-marker" style="width:${sizePx}px;height:${sizePx}px;border-color:${escapeHtmlAttr(color)};"></div>`,
-            iconSize: [sizePx, sizePx],
-            iconAnchor: [Math.round(sizePx / 2), Math.round(sizePx / 2)]
+          stopCandidates.push({
+            lat: stop.lat,
+            lon: stop.lon,
+            capturedMs: Number.isFinite(stop.endTsMs) ? stop.endTsMs : 0,
+            color,
+            tooltip: `${escapeHtml(personLabel)}<br/>${escapeHtml(formatStopRange(stop.startTsMs, stop.endTsMs))}`
           });
-          const stopMarker = window.L.marker([stop.lat, stop.lon], { icon })
-            .bindTooltip(tooltip, {
+        }
+      }
+    }
+
+    if (showStops && stopCandidates.length > 0) {
+      const sizePx = Math.max(10, stopMarkerSize);
+      const visibleStops = selectVisibleMarkersByOverlap(this._map, stopCandidates, sizePx / 2);
+      for (const stop of visibleStops) {
+        const icon = window.L.divIcon({
+          className: "",
+          html: `<div class="people-map-plus-stop-marker" style="width:${sizePx}px;height:${sizePx}px;border-color:${escapeHtmlAttr(stop.color)};"></div>`,
+          iconSize: [sizePx, sizePx],
+          iconAnchor: [Math.round(sizePx / 2), Math.round(sizePx / 2)]
+        });
+        window.L.marker([stop.lat, stop.lon], { icon })
+          .bindTooltip(stop.tooltip, {
             direction: "top",
             offset: [0, -Math.max(10, Math.round(sizePx / 2) + 4)],
             sticky: true,
@@ -945,7 +979,26 @@ class PeopleMapPlusCard extends HTMLElement {
             className: "people-map-plus-tooltip people-map-plus-stop-tooltip",
             interactive: false
           }).addTo(this._stops);
-        }
+      }
+    }
+
+    if (showTracks && trackPointCandidates.length > 0) {
+      for (const point of trackPointCandidates) {
+        const icon = window.L.divIcon({
+          className: "",
+          html: `<div class="people-map-plus-track-point-marker" style="width:${trackPointSize}px;height:${trackPointSize}px;border-color:${escapeHtmlAttr(point.color)};"></div>`,
+          iconSize: [trackPointSize, trackPointSize],
+          iconAnchor: [Math.round(trackPointSize / 2), Math.round(trackPointSize / 2)]
+        });
+        window.L.marker([point.lat, point.lon], { icon })
+          .bindTooltip(point.tooltip, {
+            direction: "top",
+            offset: [0, -Math.max(8, Math.round(trackPointSize / 2) + 4)],
+            sticky: true,
+            opacity: 1,
+            className: "people-map-plus-tooltip people-map-plus-stop-tooltip",
+            interactive: false
+          }).addTo(this._tracks);
       }
     }
   }
@@ -1382,7 +1435,7 @@ function formatStopRange(startTsMs, endTsMs) {
   return `${startText} - ${endText} (${durationMinutes} min)`;
 }
 
-function selectVisiblePhotosByOverlap(map, candidates, markerRadiusPx) {
+function selectVisibleMarkersByOverlap(map, candidates, markerRadiusPx) {
   const selected = [];
   const sorted = [...candidates].sort((a, b) => b.capturedMs - a.capturedMs);
   for (const candidate of sorted) {
@@ -1405,6 +1458,14 @@ function selectVisiblePhotosByOverlap(map, candidates, markerRadiusPx) {
   }
 
   return selected;
+}
+
+function formatTimestampMs(value) {
+  if (!Number.isFinite(value)) {
+    return "Unknown time";
+  }
+
+  return new Date(value).toLocaleString();
 }
 
 function formatCapturedAt(value) {
