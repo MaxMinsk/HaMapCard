@@ -12,7 +12,7 @@ Card type: `custom:people-map-plus`
 4. Panel-friendly height mode for full-width/full-height map.
 5. Coordinate fallback for `person.*`: direct `latitude/longitude`, then `source` tracker, then matching `zone.*`.
 6. `persons` list is normalized (`max` -> `person.max` if such entity exists); if explicit list is invalid/empty, card falls back to auto-detected `person.*`.
-7. Photo layer from integration API with circular thumbnail markers and popup to open full-size photo.
+7. Photo layer from integration API with circular thumbnail markers and in-card viewer (thumb -> full -> close).
 8. If photo circles overlap, only the newest photo is shown.
 
 ## Files
@@ -91,6 +91,10 @@ Photos options:
 4. `photo_limit` (number, default `200`) - max photos returned by API, `0` means unlimited.
 5. `photos_refresh_seconds` (number, default `60`) - fetch throttle window for photos.
 6. `photo_marker_size` (number, `24..96`, default `40`) - thumbnail marker size in px.
+7. Photo click cycle:
+   - first click on marker opens enlarged thumbnail in the same card;
+   - second click on viewer switches to full-size;
+   - third click closes viewer and returns to map.
 
 ## Notes
 

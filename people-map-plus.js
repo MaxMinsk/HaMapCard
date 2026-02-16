@@ -54,6 +54,9 @@ class PeopleMapPlusCard extends HTMLElement {
     this._markers = undefined;
     this._mapEl = undefined;
     this._statusEl = undefined;
+    this._photoViewerEl = undefined;
+    this._photoViewerImgEl = undefined;
+    this._photoViewerMetaEl = undefined;
     this._initialized = false;
     this._fitDone = false;
     this._lastTracksFetchKey = "";
@@ -61,6 +64,10 @@ class PeopleMapPlusCard extends HTMLElement {
     this._lastPhotosFetchKey = "";
     this._lastPhotosFetchAt = 0;
     this._photoItemsCache = [];
+    this._photoViewerState = {
+      step: 0,
+      itemKey: ""
+    };
     this._resizeHandler = () => {
       this.updateMapHeight();
       this.invalidateMapSize();
@@ -118,6 +125,7 @@ class PeopleMapPlusCard extends HTMLElement {
 
   disconnectedCallback() {
     window.removeEventListener("resize", this._resizeHandler);
+    this.closePhotoViewer();
     if (this._map) {
       this._map.remove();
       this._map = undefined;
@@ -149,6 +157,7 @@ class PeopleMapPlusCard extends HTMLElement {
           flex-direction: column;
           padding: 0;
           height: 100%;
+          position: relative;
         }
         .people-map-plus-map {
           width: 100%;
@@ -328,30 +337,62 @@ class PeopleMapPlusCard extends HTMLElement {
           background-position: center;
           box-shadow: 0 2px 7px rgba(0, 0, 0, 0.5);
         }
-        .people-map-plus-photo-popup {
-          max-width: 300px;
+        .people-map-plus-photo-viewer {
+          position: absolute;
+          inset: 0;
+          background: rgba(5, 10, 16, 0.88);
+          z-index: 1100;
+          display: none;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          cursor: zoom-in;
         }
-        .people-map-plus-photo-popup img {
-          display: block;
-          width: 100%;
-          max-width: 280px;
-          height: auto;
-          border-radius: 8px;
-          margin-bottom: 6px;
+        .people-map-plus-photo-viewer.active {
+          display: flex;
         }
-        .people-map-plus-photo-meta {
-          font-size: 0.82rem;
-          color: #555;
+        .people-map-plus-photo-viewer.full {
+          cursor: zoom-out;
+        }
+        .people-map-plus-photo-viewer-content {
+          width: min(96%, 1100px);
+          max-height: 96%;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+        }
+        .people-map-plus-photo-viewer img {
+          width: auto;
+          max-width: 100%;
+          max-height: calc(100vh - 220px);
+          border-radius: 10px;
+          box-shadow: 0 6px 30px rgba(0, 0, 0, 0.5);
+          object-fit: contain;
+        }
+        .people-map-plus-photo-viewer-meta {
+          color: #f1f1f1;
+          font-size: 0.9rem;
+          text-align: center;
         }
         @media (max-width: 800px) {
           .people-map-plus-map {
             height: 320px;
+          }
+          .people-map-plus-photo-viewer img {
+            max-height: calc(100vh - 180px);
           }
         }
       </style>
       <ha-card>
         <div class="people-map-plus-card">
           <div class="people-map-plus-map"></div>
+          <div class="people-map-plus-photo-viewer">
+            <div class="people-map-plus-photo-viewer-content">
+              <img src="" alt="photo-view"/>
+              <div class="people-map-plus-photo-viewer-meta"></div>
+            </div>
+          </div>
           <div class="people-map-plus-status"></div>
         </div>
       </ha-card>
@@ -359,6 +400,12 @@ class PeopleMapPlusCard extends HTMLElement {
 
     this._mapEl = this.querySelector(".people-map-plus-map");
     this._statusEl = this.querySelector(".people-map-plus-status");
+    this._photoViewerEl = this.querySelector(".people-map-plus-photo-viewer");
+    this._photoViewerImgEl = this.querySelector(".people-map-plus-photo-viewer img");
+    this._photoViewerMetaEl = this.querySelector(".people-map-plus-photo-viewer-meta");
+    if (this._photoViewerEl) {
+      this._photoViewerEl.addEventListener("click", () => this.onPhotoViewerClick());
+    }
     this._initialized = true;
     this.applyStatusVisibility();
     this.updateMapHeight();
@@ -531,6 +578,7 @@ class PeopleMapPlusCard extends HTMLElement {
     if (!this._config.show_photos) {
       this._photos.clearLayers();
       this._photoItemsCache = [];
+      this.closePhotoViewer();
       return;
     }
 
@@ -597,7 +645,8 @@ class PeopleMapPlusCard extends HTMLElement {
         previewUrl,
         mediaUrl,
         capturedMs: parseIsoTimestampToMs(item?.capturedAtUtc) ?? 0,
-        capturedText: formatCapturedAt(item?.capturedAtUtc)
+        capturedText: formatCapturedAt(item?.capturedAtUtc),
+        itemKey: String(item?.mediaRelPath || mediaUrl)
       });
     }
 
@@ -613,19 +662,104 @@ class PeopleMapPlusCard extends HTMLElement {
         iconAnchor
       });
 
-      const popupHtml = `
-        <div class="people-map-plus-photo-popup">
-          <a href="${escapeHtmlAttr(item.mediaUrl)}" target="_blank" rel="noopener noreferrer">
-            <img src="${escapeHtmlAttr(item.mediaUrl)}" alt="photo"/>
-          </a>
-          <div class="people-map-plus-photo-meta">${escapeHtml(item.capturedText)}</div>
-        </div>
-      `;
-
-      window.L.marker([item.lat, item.lon], { icon })
-        .bindPopup(popupHtml, { maxWidth: 320 })
-        .addTo(this._photos);
+      const marker = window.L.marker([item.lat, item.lon], { icon }).addTo(this._photos);
+      marker.on("click", () => this.onPhotoMarkerClick(item));
     }
+  }
+
+  onPhotoMarkerClick(item) {
+    if (!item || !item.itemKey) {
+      return;
+    }
+
+    if (this._photoViewerState.itemKey !== item.itemKey || this._photoViewerState.step === 0) {
+      this._photoViewerState = { step: 1, itemKey: item.itemKey };
+      this.renderPhotoViewer(item);
+      return;
+    }
+
+    if (this._photoViewerState.step === 1) {
+      this._photoViewerState = { step: 2, itemKey: item.itemKey };
+      this.renderPhotoViewer(item);
+      return;
+    }
+
+    this.closePhotoViewer();
+  }
+
+  onPhotoViewerClick() {
+    if (!this._photoViewerState.itemKey || this._photoViewerState.step === 0) {
+      return;
+    }
+
+    const item = this.findPhotoItemByKey(this._photoViewerState.itemKey);
+    if (!item) {
+      this.closePhotoViewer();
+      return;
+    }
+
+    if (this._photoViewerState.step === 1) {
+      this._photoViewerState = { step: 2, itemKey: item.itemKey };
+      this.renderPhotoViewer(item);
+      return;
+    }
+
+    this.closePhotoViewer();
+  }
+
+  findPhotoItemByKey(itemKey) {
+    if (!itemKey || !Array.isArray(this._photoItemsCache)) {
+      return null;
+    }
+
+    for (const rawItem of this._photoItemsCache) {
+      const previewUrl = normalizeMediaUrl(rawItem?.previewUrl || rawItem?.thumbUrl || rawItem?.mediaUrl);
+      const mediaUrl = normalizeMediaUrl(rawItem?.mediaUrl || previewUrl);
+      const currentKey = String(rawItem?.mediaRelPath || mediaUrl);
+      if (currentKey !== itemKey) {
+        continue;
+      }
+
+      return {
+        previewUrl,
+        mediaUrl,
+        capturedText: formatCapturedAt(rawItem?.capturedAtUtc),
+        itemKey: currentKey
+      };
+    }
+
+    return null;
+  }
+
+  renderPhotoViewer(item) {
+    if (!this._photoViewerEl || !this._photoViewerImgEl || !this._photoViewerMetaEl) {
+      return;
+    }
+
+    const step = this._photoViewerState.step;
+    if (step !== 1 && step !== 2) {
+      this.closePhotoViewer();
+      return;
+    }
+
+    const imageUrl = step === 1 ? item.previewUrl : item.mediaUrl;
+    this._photoViewerImgEl.src = imageUrl;
+    this._photoViewerMetaEl.textContent = step === 1
+      ? `${item.capturedText} • thumbnail`
+      : `${item.capturedText} • full`;
+    this._photoViewerEl.classList.add("active");
+    this._photoViewerEl.classList.toggle("full", step === 2);
+  }
+
+  closePhotoViewer() {
+    this._photoViewerState = { step: 0, itemKey: "" };
+    if (!this._photoViewerEl || !this._photoViewerImgEl || !this._photoViewerMetaEl) {
+      return;
+    }
+
+    this._photoViewerEl.classList.remove("active", "full");
+    this._photoViewerImgEl.src = "";
+    this._photoViewerMetaEl.textContent = "";
   }
 
   renderTracks(tracks, persons) {
