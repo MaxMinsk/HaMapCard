@@ -889,17 +889,25 @@ class PeopleMapPlusCard extends HTMLElement {
         const personLabel = labelByEntity.get(entityId) || entityId || "Person";
         for (const stop of stops) {
           const tooltip = `${escapeHtml(personLabel)}<br/>${escapeHtml(formatStopRange(stop.startTsMs, stop.endTsMs))}`;
-          window.L.circleMarker([stop.lat, stop.lon], {
+          const stopMarker = window.L.circleMarker([stop.lat, stop.lon], {
             radius: Math.round(stopMarkerSize / 2),
             color,
             weight: 2,
             fillColor: "#ffffff",
             fillOpacity: 0.9,
-            opacity: 0.95
+            opacity: 0.95,
+            interactive: true
           }).bindTooltip(tooltip, {
             direction: "top",
             sticky: true
+          }).bindPopup(tooltip, {
+            autoPan: false,
+            closeButton: false
           }).addTo(this._stops);
+
+          stopMarker.on("mouseover", () => stopMarker.openTooltip());
+          stopMarker.on("mouseout", () => stopMarker.closeTooltip());
+          stopMarker.on("click", () => stopMarker.openPopup());
         }
       }
     }
