@@ -95,6 +95,7 @@ Tracks options:
 12. If stop circles overlap, only the newest stop is rendered.
 13. Track points are rendered with marker size `stops_marker_size / 2`.
 14. If track points overlap, only the newest point is rendered (overlap radius = `track point radius * 3`).
+15. Track/stop overlap filtering is recalculated on map zoom and move.
 
 Photos options:
 

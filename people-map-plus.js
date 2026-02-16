@@ -64,6 +64,8 @@ class PeopleMapPlusCard extends HTMLElement {
     this._fitDone = false;
     this._lastTracksFetchKey = "";
     this._lastTracksFetchAt = 0;
+    this._trackItemsCache = [];
+    this._trackPersonsCache = [];
     this._lastPhotosFetchKey = "";
     this._lastPhotosFetchAt = 0;
     this._photoItemsCache = [];
@@ -138,6 +140,8 @@ class PeopleMapPlusCard extends HTMLElement {
       this._stops = undefined;
       this._markers = undefined;
       this._fitDone = false;
+      this._trackItemsCache = [];
+      this._trackPersonsCache = [];
       this._photoItemsCache = [];
     }
   }
@@ -506,6 +510,9 @@ class PeopleMapPlusCard extends HTMLElement {
         if (this._config?.show_photos && this._photoItemsCache.length > 0) {
           this.renderPhotos(this._photoItemsCache);
         }
+        if ((this._config?.show_tracks || this._config?.show_stops) && this._trackItemsCache.length > 0) {
+          this.renderTracks(this._trackItemsCache, this._trackPersonsCache);
+        }
       });
       this._map.on("tooltipopen", (event) => this.onMapTooltipOpen(event));
       this.updateMapHeight();
@@ -594,12 +601,19 @@ class PeopleMapPlusCard extends HTMLElement {
       if (this._stops) {
         this._stops.clearLayers();
       }
+      this._trackItemsCache = [];
+      this._trackPersonsCache = [];
       return;
     }
 
     const entities = this.resolveTrackEntities(persons);
     if (entities.length === 0) {
       this._tracks.clearLayers();
+      if (this._stops) {
+        this._stops.clearLayers();
+      }
+      this._trackItemsCache = [];
+      this._trackPersonsCache = [];
       return;
     }
 
@@ -634,6 +648,8 @@ class PeopleMapPlusCard extends HTMLElement {
       }
 
       const tracks = Array.isArray(parsed?.tracks) ? parsed.tracks : [];
+      this._trackItemsCache = tracks;
+      this._trackPersonsCache = Array.isArray(persons) ? persons.map((person) => ({ ...person })) : [];
       this.renderTracks(tracks, persons);
     } catch (error) {
       console.warn("[people-map-plus] Tracks fetch failed", error);
