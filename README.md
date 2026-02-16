@@ -14,7 +14,7 @@ Card type: `custom:people-map-plus`
 6. `persons` list is normalized (`max` -> `person.max` if such entity exists); if explicit list is invalid/empty, card falls back to auto-detected `person.*`.
 7. Photo layer from integration API with circular thumbnail markers, dark tooltip preview, and in-card full-size viewer.
 8. If photo circles overlap, only the newest photo is shown.
-9. Stops layer: stationary points detected from tracks with dark tooltip (`person + date/time + duration`).
+9. Stops layer: stationary points detected from tracks with dark tooltip (`person + date/time + duration`) and dedicated stop markers.
 
 ## Files
 

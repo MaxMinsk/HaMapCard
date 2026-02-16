@@ -353,6 +353,13 @@ class PeopleMapPlusCard extends HTMLElement {
         .people-map-plus-map .leaflet-tooltip.people-map-plus-stop-tooltip {
           pointer-events: none;
         }
+        .people-map-plus-stop-marker {
+          border-radius: 50%;
+          background: rgba(255, 255, 255, 0.92);
+          border: 2px solid #2fa7ff;
+          box-shadow: 0 2px 7px rgba(0, 0, 0, 0.45);
+          box-sizing: border-box;
+        }
         .people-map-plus-map .leaflet-tooltip-top.people-map-plus-tooltip::before {
           border-top-color: rgba(10, 14, 20, 0.92);
         }
@@ -922,17 +929,17 @@ class PeopleMapPlusCard extends HTMLElement {
         const personLabel = labelByEntity.get(entityId) || entityId || "Person";
         for (const stop of stops) {
           const tooltip = `${escapeHtml(personLabel)}<br/>${escapeHtml(formatStopRange(stop.startTsMs, stop.endTsMs))}`;
-          const stopMarker = window.L.circleMarker([stop.lat, stop.lon], {
-            radius: Math.max(6, Math.round(stopMarkerSize / 2)),
-            color,
-            weight: 2,
-            fillColor: "#ffffff",
-            fillOpacity: 0.9,
-            opacity: 0.95,
-            interactive: true
-          }).bindTooltip(tooltip, {
+          const sizePx = Math.max(10, stopMarkerSize);
+          const icon = window.L.divIcon({
+            className: "",
+            html: `<div class="people-map-plus-stop-marker" style="width:${sizePx}px;height:${sizePx}px;border-color:${escapeHtmlAttr(color)};"></div>`,
+            iconSize: [sizePx, sizePx],
+            iconAnchor: [Math.round(sizePx / 2), Math.round(sizePx / 2)]
+          });
+          const stopMarker = window.L.marker([stop.lat, stop.lon], { icon })
+            .bindTooltip(tooltip, {
             direction: "top",
-            offset: [0, -Math.max(10, Math.round(stopMarkerSize / 2) + 4)],
+            offset: [0, -Math.max(10, Math.round(sizePx / 2) + 4)],
             sticky: true,
             opacity: 1,
             className: "people-map-plus-tooltip people-map-plus-stop-tooltip",
