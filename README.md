@@ -94,6 +94,7 @@ Tracks options:
 11. `stops_marker_size` (number, default `10`) - stop marker size in px.
 12. If stop circles overlap, only the newest stop is rendered.
 13. Track points are rendered with marker size `stops_marker_size / 2`.
+14. If track points overlap, only the newest point is rendered (overlap radius = `track point radius * 3`).
 
 Photos options:
 

@@ -1003,7 +1003,13 @@ class PeopleMapPlusCard extends HTMLElement {
     }
 
     if (showTracks && trackPointCandidates.length > 0) {
-      for (const point of trackPointCandidates) {
+      const trackPointRadiusPx = trackPointSize / 2;
+      const visibleTrackPoints = selectVisibleMarkersByOverlap(
+        this._map,
+        trackPointCandidates,
+        trackPointRadiusPx * 3
+      );
+      for (const point of visibleTrackPoints) {
         const icon = window.L.divIcon({
           className: "",
           html: `<div class="people-map-plus-track-point-marker" style="width:${trackPointSize}px;height:${trackPointSize}px;border-color:${escapeHtmlAttr(point.color)};"></div>`,
