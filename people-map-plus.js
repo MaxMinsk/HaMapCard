@@ -350,6 +350,9 @@ class PeopleMapPlusCard extends HTMLElement {
           pointer-events: auto;
           max-width: min(82vw, 360px);
         }
+        .people-map-plus-map .leaflet-tooltip.people-map-plus-stop-tooltip {
+          pointer-events: none;
+        }
         .people-map-plus-map .leaflet-tooltip-top.people-map-plus-tooltip::before {
           border-top-color: rgba(10, 14, 20, 0.92);
         }
@@ -932,14 +935,9 @@ class PeopleMapPlusCard extends HTMLElement {
             offset: [0, -Math.max(10, Math.round(stopMarkerSize / 2) + 4)],
             sticky: true,
             opacity: 1,
-            className: "people-map-plus-tooltip",
-            interactive: true
+            className: "people-map-plus-tooltip people-map-plus-stop-tooltip",
+            interactive: false
           }).addTo(this._stops);
-
-          stopMarker.on("mouseover", () => stopMarker.openTooltip());
-          stopMarker.on("mousemove", () => stopMarker.openTooltip());
-          stopMarker.on("mouseout", () => stopMarker.closeTooltip());
-          stopMarker.on("click", () => stopMarker.openTooltip());
         }
       }
     }
