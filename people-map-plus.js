@@ -340,27 +340,37 @@ class PeopleMapPlusCard extends HTMLElement {
           background-position: center;
           box-shadow: 0 2px 7px rgba(0, 0, 0, 0.5);
         }
-        .people-map-plus-map .leaflet-popup-content {
-          margin: 10px;
+        .people-map-plus-map .leaflet-tooltip.people-map-plus-tooltip {
+          background: rgba(10, 14, 20, 0.92);
+          color: #f4f7fb;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 10px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+          padding: 8px 10px;
+          pointer-events: auto;
+          max-width: min(82vw, 360px);
         }
-        .people-map-plus-photo-popup {
+        .people-map-plus-map .leaflet-tooltip-top.people-map-plus-tooltip::before {
+          border-top-color: rgba(10, 14, 20, 0.92);
+        }
+        .people-map-plus-photo-tooltip {
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 8px;
         }
-        .people-map-plus-photo-popup-img {
+        .people-map-plus-photo-tooltip-img {
           display: block;
-          width: min(72vw, 360px);
+          width: min(72vw, 320px);
           max-width: 100%;
-          max-height: 52vh;
+          max-height: 42vh;
           border-radius: 10px;
           object-fit: contain;
           box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
           cursor: zoom-in;
         }
-        .people-map-plus-photo-popup-meta {
-          color: var(--primary-text-color);
+        .people-map-plus-photo-tooltip-meta {
+          color: #f4f7fb;
           font-size: 0.8rem;
           text-align: center;
         }
@@ -466,7 +476,7 @@ class PeopleMapPlusCard extends HTMLElement {
           this.renderPhotos(this._photoItemsCache);
         }
       });
-      this._map.on("popupopen", (event) => this.onPhotoPopupOpen(event));
+      this._map.on("tooltipopen", (event) => this.onMapTooltipOpen(event));
       this.updateMapHeight();
       this.invalidateMapSize();
       this.setStatus("Map ready");
@@ -692,22 +702,24 @@ class PeopleMapPlusCard extends HTMLElement {
       });
 
       const marker = window.L.marker([item.lat, item.lon], { icon }).addTo(this._photos);
-      marker.bindPopup(this.renderPhotoPopupContent(item), {
-        maxWidth: 420,
-        minWidth: 180,
-        autoPanPadding: [24, 24],
-        closeButton: false
+      marker.bindTooltip(this.renderPhotoTooltipContent(item), {
+        direction: "top",
+        offset: [0, -Math.max(12, Math.round(markerSize * 0.6))],
+        opacity: 1,
+        className: "people-map-plus-tooltip",
+        interactive: true
       });
+      marker.on("click", () => marker.openTooltip());
     }
   }
 
-  onPhotoPopupOpen(event) {
-    const popupElement = event?.popup?.getElement?.();
-    if (!popupElement) {
+  onMapTooltipOpen(event) {
+    const tooltipElement = event?.tooltip?.getElement?.();
+    if (!tooltipElement) {
       return;
     }
 
-    const image = popupElement.querySelector(".people-map-plus-photo-popup-img");
+    const image = tooltipElement.querySelector(".people-map-plus-photo-tooltip-img");
     if (!(image instanceof HTMLElement) || image.dataset.boundClick === "1") {
       return;
     }
@@ -731,9 +743,7 @@ class PeopleMapPlusCard extends HTMLElement {
       return;
     }
 
-    if (this._map) {
-      this._map.closePopup();
-    }
+    this.closeAllTooltips();
 
     this.renderPhotoViewer(item);
   }
@@ -766,22 +776,39 @@ class PeopleMapPlusCard extends HTMLElement {
     return null;
   }
 
-  renderPhotoPopupContent(item) {
+  renderPhotoTooltipContent(item) {
     const keyAttr = escapeHtmlAttr(item.itemKey);
     const previewAttr = escapeHtmlAttr(item.previewUrl);
     const title = escapeHtml(item.capturedText || "Photo");
     return `
-      <div class="people-map-plus-photo-popup">
+      <div class="people-map-plus-photo-tooltip">
         <img
-          class="people-map-plus-photo-popup-img"
+          class="people-map-plus-photo-tooltip-img"
           src="${previewAttr}"
           alt="photo preview"
           loading="lazy"
           data-item-key="${keyAttr}"
         />
-        <div class="people-map-plus-photo-popup-meta">${title}</div>
+        <div class="people-map-plus-photo-tooltip-meta">${title}</div>
       </div>
     `;
+  }
+
+  closeAllTooltips() {
+    const closeTooltipOnLayer = (layerGroup) => {
+      if (!layerGroup || typeof layerGroup.eachLayer !== "function") {
+        return;
+      }
+
+      layerGroup.eachLayer((layer) => {
+        if (layer && typeof layer.closeTooltip === "function") {
+          layer.closeTooltip();
+        }
+      });
+    };
+
+    closeTooltipOnLayer(this._photos);
+    closeTooltipOnLayer(this._stops);
   }
 
   renderPhotoViewer(item) {
@@ -899,15 +926,14 @@ class PeopleMapPlusCard extends HTMLElement {
             interactive: true
           }).bindTooltip(tooltip, {
             direction: "top",
-            sticky: true
-          }).bindPopup(tooltip, {
-            autoPan: false,
-            closeButton: false
+            offset: [0, -Math.max(10, Math.round(stopMarkerSize / 2) + 4)],
+            sticky: true,
+            opacity: 1,
+            className: "people-map-plus-tooltip",
+            interactive: true
           }).addTo(this._stops);
 
-          stopMarker.on("mouseover", () => stopMarker.openTooltip());
-          stopMarker.on("mouseout", () => stopMarker.closeTooltip());
-          stopMarker.on("click", () => stopMarker.openPopup());
+          stopMarker.on("click", () => stopMarker.openTooltip());
         }
       }
     }

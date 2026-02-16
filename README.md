@@ -12,9 +12,9 @@ Card type: `custom:people-map-plus`
 4. Panel-friendly height mode for full-width/full-height map.
 5. Coordinate fallback for `person.*`: direct `latitude/longitude`, then `source` tracker, then matching `zone.*`.
 6. `persons` list is normalized (`max` -> `person.max` if such entity exists); if explicit list is invalid/empty, card falls back to auto-detected `person.*`.
-7. Photo layer from integration API with circular thumbnail markers, map popup preview, and in-card full-size viewer.
+7. Photo layer from integration API with circular thumbnail markers, dark tooltip preview, and in-card full-size viewer.
 8. If photo circles overlap, only the newest photo is shown.
-9. Stops layer: stationary points detected from tracks with hover tooltip and click popup (`person + date/time + duration`).
+9. Stops layer: stationary points detected from tracks with dark tooltip (`person + date/time + duration`).
 
 ## Files
 
@@ -100,8 +100,8 @@ Photos options:
 5. `photos_refresh_seconds` (number, default `60`) - fetch throttle window for photos.
 6. `photo_marker_size` (number, `24..96`, default `40`) - thumbnail marker size in px.
 7. Photo click flow:
-   - click marker: opens enlarged preview on the map;
-   - click outside map popup: closes preview;
+   - hover/click marker: opens dark tooltip preview on the map;
+   - click outside map tooltip: closes preview;
    - click preview image: opens full-size photo in-card;
    - click full-size photo: closes viewer and returns to map.
 
